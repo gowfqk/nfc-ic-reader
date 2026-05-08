@@ -317,8 +317,6 @@
                     android:text="复制卡号"
                     android:textSize="13sp"
                     app:cornerRadius="8dp"
-                    app:icon="@android:drawable/ic_menu_agenda"
-                    app:iconPadding="4dp"
                     style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
 
                 <TextView

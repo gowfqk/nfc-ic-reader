@@ -223,10 +223,7 @@ class MainActivity : AppCompatActivity() {
                 val text = formatUid(currentUidHex, currentFormat)
                 val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                 clipboard.setPrimaryClip(ClipData.newPlainText("UID", text))
-                // Android 13+ 以下显示提示
-                if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.S_V2) {
-                    Toast.makeText(this, "已复制: $text", Toast.LENGTH_SHORT).show()
-                }
+                Toast.makeText(this, "已复制: $text", Toast.LENGTH_SHORT).show()
             } else {
                 Toast.makeText(this, "还没有读取到卡号", Toast.LENGTH_SHORT).show()
             }
