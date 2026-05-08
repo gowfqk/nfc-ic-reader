@@ -1374,7 +1374,11 @@ class ClientCallback:
 def main():
     """主函数"""
     # 强制 stdout 无缓冲，确保日志实时输出
-    sys.stdout.reconfigure(line_buffering=True)
+    # PyInstaller --noconsole 模式下 sys.stdout 为 None，需跳过
+    if sys.stdout is not None:
+        sys.stdout.reconfigure(line_buffering=True)
+    if sys.stderr is not None:
+        sys.stderr.reconfigure(line_buffering=True)
     try:
         app = QApplication(sys.argv)
         app.setApplicationName('NFC 读卡器')
@@ -1388,7 +1392,8 @@ def main():
     except Exception as e:
         import traceback
         traceback.print_exc()
-        input(f"\n程序出错，按回车退出: {e}")
+        if sys.stdin is not None:
+            input(f"\n程序出错，按回车退出: {e}")
 
 
 if __name__ == '__main__':
