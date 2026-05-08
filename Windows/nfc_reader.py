@@ -464,15 +464,26 @@ class UidFormatter:
         return ''.join(reversed([uid[i:i+2] for i in range(0, len(uid), 2)]))
     
     @staticmethod
+    def _decimal_width(uid: str) -> int:
+        """根据 UID 字节数返回十进制固定位数（4字节→10位，7字节→17位）"""
+        byte_count = len(uid) // 2
+        if byte_count <= 4:
+            return 10  # FFFFFFFF = 4294967295 (10位)
+        else:
+            return 17  # 0xFFFFFFFFFFFFFF = 72057594037927935 (17位)
+
+    @staticmethod
     def format_decimal_normal(uid: str) -> str:
-        """十进制正序"""
-        return str(int(uid, 16))
+        """十进制正序（固定位数，前导零补齐）"""
+        width = UidFormatter._decimal_width(uid)
+        return str(int(uid, 16)).zfill(width)
     
     @staticmethod
     def format_decimal_reverse(uid: str) -> str:
-        """十进制倒序"""
+        """十进制倒序（固定位数，前导零补齐）"""
         reversed_hex = ''.join(reversed([uid[i:i+2] for i in range(0, len(uid), 2)]))
-        return str(int(reversed_hex, 16))
+        width = UidFormatter._decimal_width(uid)
+        return str(int(reversed_hex, 16)).zfill(width)
     
     @staticmethod
     def format_wahid(uid: str) -> str:
