@@ -174,10 +174,7 @@ class TcpServer:
             
             while self.is_running:
                 try:
-                    # 用 select 等待连接，避免 Windows settimeout 10038 错误
-                    readable, _, _ = select.select([self.server_socket], [], [], 1.0)
-                    if not readable:
-                        continue
+                    self.server_socket.settimeout(1.0)
                     try:
                         client, addr = self.server_socket.accept()
                         client.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
@@ -186,6 +183,8 @@ class TcpServer:
                             self.client_socket = client
                         self.callback.on_client_connected(addr[0])
                         self._receive_data(client)
+                    except socket.timeout:
+                        continue
                     except Exception as e:
                         if self.is_running:
                             print(f'[TcpServer] accept 异常: {e}')
@@ -813,14 +812,22 @@ class MainWindow(QMainWindow):
     
     def set_dark_theme(self):
         """深色主题"""
+        # Fusion 样式才会完整遵循 QPalette 配色，Windows 默认样式会忽略
+        QApplication.setStyle('Fusion')
         palette = QPalette()
         palette.setColor(QPalette.Window, QColor(53, 53, 53))
         palette.setColor(QPalette.WindowText, Qt.white)
         palette.setColor(QPalette.Base, QColor(25, 25, 25))
+        palette.setColor(QPalette.AlternateBase, QColor(53, 53, 53))
+        palette.setColor(QPalette.ToolTipBase, QColor(25, 25, 25))
+        palette.setColor(QPalette.ToolTipText, Qt.white)
         palette.setColor(QPalette.Text, Qt.white)
         palette.setColor(QPalette.Button, QColor(53, 53, 53))
         palette.setColor(QPalette.ButtonText, Qt.white)
+        palette.setColor(QPalette.BrightText, Qt.red)
+        palette.setColor(QPalette.Link, QColor(42, 130, 218))
         palette.setColor(QPalette.Highlight, QColor(42, 130, 218))
+        palette.setColor(QPalette.HighlightedText, Qt.black)
         QApplication.setPalette(palette)
     
     def _create_connection_section(self) -> QGroupBox:
