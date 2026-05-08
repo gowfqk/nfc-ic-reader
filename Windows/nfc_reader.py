@@ -24,8 +24,8 @@ try:
     KEYBOARD_AVAILABLE = True
 except ImportError:
     KEYBOARD_AVAILABLE = False
-    print("警告: keyboard 库未安装，键盘模拟功能不可用")
-    print("请运行: pip install keyboard")
+    print("警告: keyboard 库未安装，键盘模拟功能不可用", flush=True)
+    print("请运行: pip install keyboard", flush=True)
 
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
@@ -58,13 +58,13 @@ class AdbHelper:
                 timeout=5
             )
             ok = result.returncode == 0
-            print(f'[ADB] version 检查: {"✓" if ok else "✗"} (rc={result.returncode})')
+            print(f'[ADB] version 检查: {"✓" if ok else "✗"} (rc={result.returncode})', flush=True)
             return ok
         except FileNotFoundError:
-            print('[ADB] ✗ adb 命令未找到')
+            print('[ADB] ✗ adb 命令未找到', flush=True)
             return False
         except subprocess.SubprocessError as e:
-            print(f'[ADB] ✗ version 检查失败: {e}')
+            print(f'[ADB] ✗ version 检查失败: {e}', flush=True)
             return False
     
     @staticmethod
@@ -97,7 +97,7 @@ class AdbHelper:
     def forward(local_port: int, remote_port: int) -> bool:
         """创建端口转发"""
         try:
-            print(f'[ADB] 创建转发: tcp:{local_port} -> tcp:{remote_port}')
+            print(f'[ADB] 创建转发: tcp:{local_port} -> tcp:{remote_port}', flush=True)
             result = subprocess.run(
                 ['adb', 'forward', f'tcp:{local_port}', f'tcp:{remote_port}'],
                 capture_output=True,
@@ -107,16 +107,16 @@ class AdbHelper:
                 timeout=10
             )
             ok = result.returncode == 0
-            print(f'[ADB] 转发结果: {"✓" if ok else "✗"} (rc={result.returncode})')
+            print(f'[ADB] 转发结果: {"✓" if ok else "✗"} (rc={result.returncode})', flush=True)
             if not ok:
-                print(f'[ADB] stdout: {result.stdout.strip()}')
-                print(f'[ADB] stderr: {result.stderr.strip()}')
+                print(f'[ADB] stdout: {result.stdout.strip()}', flush=True)
+                print(f'[ADB] stderr: {result.stderr.strip()}', flush=True)
             return ok
         except FileNotFoundError:
-            print('[ADB] ✗ adb 命令未找到')
+            print('[ADB] ✗ adb 命令未找到', flush=True)
             return False
         except subprocess.SubprocessError as e:
-            print(f'[ADB] ✗ 转发失败: {e}')
+            print(f'[ADB] ✗ 转发失败: {e}', flush=True)
             return False
     
     @staticmethod
@@ -191,14 +191,14 @@ class TcpServer:
     def _run_server(self):
         """服务器主循环"""
         try:
-            print(f'[TcpServer] 正在创建 socket...')
+            print(f'[TcpServer] 正在创建 socket...', flush=True)
             self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            print(f'[TcpServer] 正在绑定 0.0.0.0:{self.port}...')
+            print(f'[TcpServer] 正在绑定 0.0.0.0:{self.port}...', flush=True)
             self.server_socket.bind(('0.0.0.0', self.port))
             self.server_socket.listen(1)
             self.is_running = True
-            print(f'[TcpServer] ✓ 已启动，监听端口 {self.port}，等待手机连接...')
+            print(f'[TcpServer] ✓ 已启动，监听端口 {self.port}，等待手机连接...', flush=True)
             
             self.callback.on_status_changed(f'等待手机连接... (监听 0.0.0.0:{self.port})')
             
@@ -207,33 +207,33 @@ class TcpServer:
                     self.server_socket.settimeout(1.0)
                     try:
                         client, addr = self.server_socket.accept()
-                        print(f'[TcpServer] ✓ 手机已连接! 来自 {addr[0]}:{addr[1]}')
+                        print(f'[TcpServer] ✓ 手机已连接! 来自 {addr[0]}:{addr[1]}', flush=True)
                         client.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
                         with self._lock:
                             self.client_socket = client
-                        print(f'[TcpServer] 正在通知 UI...')
+                        print(f'[TcpServer] 正在通知 UI...', flush=True)
                         self.callback.on_client_connected(addr[0])
-                        print(f'[TcpServer] 开始接收数据...')
+                        print(f'[TcpServer] 开始接收数据...', flush=True)
                         self._receive_data(client)
                     except socket.timeout:
                         continue
                     except Exception as e:
                         if self.is_running:
-                            print(f'[TcpServer] accept 异常: {type(e).__name__}: {e}')
+                            print(f'[TcpServer] accept 异常: {type(e).__name__}: {e}', flush=True)
                         
                 except Exception as e:
                     if self.is_running:
-                        print(f'[TcpServer] 连接错误: {type(e).__name__}: {e}')
+                        print(f'[TcpServer] 连接错误: {type(e).__name__}: {e}', flush=True)
                         self.callback.on_error(f'连接错误: {e}')
         
         except OSError as e:
-            print(f'[TcpServer] ✗ 绑定失败: {e}')
+            print(f'[TcpServer] ✗ 绑定失败: {e}', flush=True)
             self.callback.on_error(f'端口 {self.port} 绑定失败: {e}')
         except Exception as e:
-            print(f'[TcpServer] ✗ 服务器错误: {type(e).__name__}: {e}')
+            print(f'[TcpServer] ✗ 服务器错误: {type(e).__name__}: {e}', flush=True)
             self.callback.on_error(f'服务器错误: {e}')
         finally:
-            print('[TcpServer] 服务器已关闭')
+            print('[TcpServer] 服务器已关闭', flush=True)
             self._cleanup()
     
     def _receive_data(self, client: socket.socket):
@@ -241,7 +241,7 @@ class TcpServer:
         buffer = ''
         try:
             peer = client.getpeername()
-            print(f'[TcpServer] 开始接收数据 from {peer}')
+            print(f'[TcpServer] 开始接收数据 from {peer}', flush=True)
         except Exception:
             peer = '?'
         while self.is_running:
@@ -250,21 +250,21 @@ class TcpServer:
                 # 需要停止时由 stop() 关闭 socket 让 recv 抛异常退出
                 data = client.recv(1024)
                 if not data:
-                    print(f'[TcpServer] 客户端 {peer} 断开（空数据）')
+                    print(f'[TcpServer] 客户端 {peer} 断开（空数据）', flush=True)
                     break
                 
                 text = data.decode('utf-8')
                 buffer += text
-                print(f'[TcpServer] 收到数据: {repr(text[:100])}')
+                print(f'[TcpServer] 收到数据: {repr(text[:100])}', flush=True)
                 
                 while '\n' in buffer:
                     line, buffer = buffer.split('\n', 1)
                     if line.strip():
-                        print(f'[TcpServer] 解析: {line.strip()}')
+                        print(f'[TcpServer] 解析: {line.strip()}', flush=True)
                         self.callback.on_data_received(line.strip())
                         
             except Exception as e:
-                print(f'[TcpServer] recv 异常: {type(e).__name__}: {e}')
+                print(f'[TcpServer] recv 异常: {type(e).__name__}: {e}', flush=True)
                 break
         
         try:
@@ -274,7 +274,7 @@ class TcpServer:
         with self._lock:
             if self.client_socket is client:
                 self.client_socket = None
-        print(f'[TcpServer] 客户端 {peer} 连接结束')
+        print(f'[TcpServer] 客户端 {peer} 连接结束', flush=True)
         if self.is_running:
             self.callback.on_client_disconnected()
     
@@ -407,7 +407,7 @@ class KeyboardSimulator:
     def type_text(self, text: str):
         """模拟键盘输入文本"""
         if not self.keyboard_available:
-            print(f"[KeyboardSimulator] 无法输入，keyboard库不可用: {text}")
+            print(f"[KeyboardSimulator] 无法输入，keyboard库不可用: {text}", flush=True)
             return False
         
         try:
@@ -415,7 +415,7 @@ class KeyboardSimulator:
             keyboard.write(text, delay=0.01)
             return True
         except Exception as e:
-            print(f"[KeyboardSimulator] 输入失败: {e}")
+            print(f"[KeyboardSimulator] 输入失败: {e}", flush=True)
             return False
     
     def press_key(self, key: str):
@@ -427,7 +427,7 @@ class KeyboardSimulator:
             keyboard.press_and_release(key)
             return True
         except Exception as e:
-            print(f"[KeyboardSimulator] 按键失败: {e}")
+            print(f"[KeyboardSimulator] 按键失败: {e}", flush=True)
             return False
     
     def type_enter(self):
@@ -1013,7 +1013,9 @@ class MainWindow(QMainWindow):
 
     def toggle_wifi(self):
         """切换 WiFi 服务器"""
+        print('[UI] toggle_wifi 被调用', flush=True, flush=True)
         if self.tcp_server and self.tcp_server.is_running:
+            print('[UI] 停止服务器', flush=True, flush=True)
             self.tcp_server.stop()
             self.tcp_server = None
             self.wifi_btn.setText('启动服务器')
@@ -1025,6 +1027,7 @@ class MainWindow(QMainWindow):
             if port is None:
                 QMessageBox.warning(self, '错误', f'端口无效，范围 1-65535')
                 return
+            print(f'[UI] 启动服务器，端口 {port}', flush=True, flush=True)
             self.tcp_server = TcpServer(port, callback=ServerCallback(self))
             self.tcp_server.start()
             self.wifi_btn.setText('停止服务器')
@@ -1034,7 +1037,9 @@ class MainWindow(QMainWindow):
     
     def toggle_adb(self):
         """切换 ADB 连接"""
+        print('[UI] toggle_adb 被调用', flush=True, flush=True)
         if self.tcp_client:
+            print('[UI] 断开 ADB', flush=True, flush=True)
             self.tcp_client.disconnect()
             self.tcp_client = None
             if self.current_forward_port:
@@ -1048,14 +1053,17 @@ class MainWindow(QMainWindow):
         else:
             local_port = self._parse_port(self.adb_local.text(), DEFAULT_ADB_LOCAL_PORT)
             remote_port = self._parse_port(self.adb_remote.text(), DEFAULT_ADB_LOCAL_PORT)
+            print(f'[UI] ADB 转发 local={local_port} remote={remote_port}', flush=True, flush=True)
             if local_port is None or remote_port is None:
                 QMessageBox.warning(self, '错误', '端口无效，范围 1-65535')
                 return
             
             if not AdbHelper.forward(local_port, remote_port):
+                print('[UI] ADB 转发失败', flush=True, flush=True)
                 QMessageBox.warning(self, '错误', '创建 ADB 转发失败')
                 return
             
+            print('[UI] ADB 转发成功，创建 TcpClient', flush=True, flush=True)
             self.current_forward_port = local_port
             self.tcp_client = TcpClient('127.0.0.1', local_port, callback=ClientCallback(self))
             self.tcp_client.connect()
@@ -1099,7 +1107,7 @@ class MainWindow(QMainWindow):
     def process_received(self, data: str):
         """处理接收到的数据"""
         try:
-            print(f'[TcpServer] 收到数据: {data}')
+            print(f'[TcpServer] 收到数据: {data}', flush=True)
             json_data = json.loads(data)
             uid = json_data.get('uid', '')
             card_type = json_data.get('type', 'unknown')
@@ -1119,7 +1127,7 @@ class MainWindow(QMainWindow):
             QTimer.singleShot(2000, self.stop_blink)
             
         except json.JSONDecodeError as e:
-            print(f'[TcpServer] JSON 解析失败: {data!r} ({e})')
+            print(f'[TcpServer] JSON 解析失败: {data!r} ({e})', flush=True)
             self.status_bar.showMessage(f'无效数据: {data[:50]}')
     
     def simulate_input(self, uid: str):
@@ -1253,18 +1261,23 @@ class ServerCallback:
         self.window = window
     
     def on_status_changed(self, msg):
+        print(f'[ServerCallback] on_status_changed: {msg}', flush=True)
         QTimer.singleShot(0, lambda: self.window.status_bar.showMessage(msg))
     
     def on_client_connected(self, addr):
+        print(f'[ServerCallback] on_client_connected: {addr}', flush=True)
         QTimer.singleShot(0, lambda: self.window.on_client_connected(addr))
     
     def on_client_disconnected(self):
+        print('[ServerCallback] on_client_disconnected', flush=True)
         QTimer.singleShot(0, lambda: self.window.on_client_disconnected())
     
     def on_data_received(self, data):
+        print(f'[ServerCallback] on_data_received: {data[:80]}', flush=True)
         QTimer.singleShot(0, lambda: self.window.process_received(data))
     
     def on_error(self, msg):
+        print(f'[ServerCallback] on_error: {msg}', flush=True)
         QTimer.singleShot(0, lambda: self.window.status_bar.showMessage(msg))
 
 
@@ -1274,9 +1287,11 @@ class ClientCallback:
         self.window = window
     
     def on_connected(self):
+        print('[ClientCallback] on_connected', flush=True)
         QTimer.singleShot(0, lambda: self.window.on_connected())
     
     def on_disconnected(self):
+        print('[ClientCallback] on_disconnected', flush=True)
         QTimer.singleShot(0, lambda: self.window.on_disconnected())
     
     def on_data_received(self, data):
@@ -1291,12 +1306,16 @@ class ClientCallback:
 
 def main():
     """主函数"""
+    # 强制 stdout 无缓冲，确保日志实时输出
+    sys.stdout.reconfigure(line_buffering=True)
     try:
         app = QApplication(sys.argv)
         app.setApplicationName('NFC 读卡器')
         
+        print('[MAIN] 程序启动', flush=True)
         window = MainWindow()
         window.show()
+        print('[MAIN] 窗口已显示', flush=True)
         
         sys.exit(app.exec_())
     except Exception as e:
