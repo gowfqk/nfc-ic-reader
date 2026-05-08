@@ -318,6 +318,61 @@
                     android:textColor="@color/text_secondary"
                     android:textSize="14sp" />
 
+                <!-- UID 格式切换按钮 -->
+                <com.google.android.material.chip.ChipGroup
+                    android:id="@+id/formatChipGroup"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    app:singleSelection="true"
+                    app:chipSpacingHorizontal="4dp"
+                    app:chipSpacingVertical="4dp">
+
+                    <com.google.android.material.chip.Chip
+                        android:id="@+id/chipHexSpace"
+                        style="@style/Widget.MaterialComponents.Chip.Choice"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:checked="true"
+                        android:text="HEX 空格" />
+
+                    <com.google.android.material.chip.Chip
+                        android:id="@+id/chipHexNoSpace"
+                        style="@style/Widget.MaterialComponents.Chip.Choice"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="HEX" />
+
+                    <com.google.android.material.chip.Chip
+                        android:id="@+id/chipHexReverse"
+                        style="@style/Widget.MaterialComponents.Chip.Choice"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="HEX 倒序" />
+
+                    <com.google.android.material.chip.Chip
+                        android:id="@+id/chipDec"
+                        style="@style/Widget.MaterialComponents.Chip.Choice"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="十进制" />
+
+                    <com.google.android.material.chip.Chip
+                        android:id="@+id/chipDecReverse"
+                        style="@style/Widget.MaterialComponents.Chip.Choice"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="十进制倒序" />
+
+                    <com.google.android.material.chip.Chip
+                        android:id="@+id/chipWahid"
+                        style="@style/Widget.MaterialComponents.Chip.Choice"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="WAHID" />
+
+                </com.google.android.material.chip.ChipGroup>
+
             </LinearLayout>
 
         </com.google.android.material.card.MaterialCardView>

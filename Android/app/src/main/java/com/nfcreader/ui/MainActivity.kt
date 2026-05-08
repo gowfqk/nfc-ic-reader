@@ -17,6 +17,8 @@ import com.nfcreader.R
 import com.nfcreader.service.NfcForegroundService
 import com.nfcreader.util.TcpClient
 import com.nfcreader.util.TcpServer
+import com.google.android.material.chip.Chip
+import com.google.android.material.chip.ChipGroup
 import org.json.JSONObject
 
 /**
@@ -48,6 +50,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var uidText: TextView
     private lateinit var cardTypeText: TextView
     private lateinit var hintText: TextView
+    private lateinit var formatChipGroup: ChipGroup
 
     // 网络连接组件
     private var tcpClient: TcpClient? = null
@@ -57,12 +60,17 @@ class MainActivity : AppCompatActivity() {
     private lateinit var prefs: SharedPreferences
     @Volatile private var isConnected = false
 
+    // UID 格式
+    private var currentUidHex: String = ""  // 保存原始 HEX，用于切换格式时重新格式化
+    private var currentFormat: String = "hex_with_space"
+
     companion object {
         private const val PREFS_NAME = "nfc_reader_prefs"
         private const val KEY_CONNECTION_MODE = "connection_mode"
         private const val KEY_SERVER_IP = "server_ip"
         private const val KEY_SERVER_PORT = "server_port"
         private const val KEY_ADB_PORT = "adb_port"
+        private const val KEY_UID_FORMAT = "uid_format"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -103,6 +111,7 @@ class MainActivity : AppCompatActivity() {
         uidText = findViewById(R.id.uidText)
         cardTypeText = findViewById(R.id.cardTypeText)
         hintText = findViewById(R.id.hintText)
+        formatChipGroup = findViewById(R.id.formatChipGroup)
     }
 
     private fun initNfc() {
@@ -160,6 +169,10 @@ class MainActivity : AppCompatActivity() {
         ipInput.setText(serverIp)
         portInput.setText(serverPort)
         adbPortInput.setText(adbPort)
+
+        // 恢复 UID 格式选择
+        currentFormat = prefs.getString(KEY_UID_FORMAT, "hex_with_space") ?: "hex_with_space"
+        restoreFormatChip(currentFormat)
     }
 
     private fun saveSettings() {
@@ -183,6 +196,20 @@ class MainActivity : AppCompatActivity() {
 
         connectButton.setOnClickListener {
             if (isConnected) disconnect() else connect()
+        }
+
+        // UID 格式切换
+        formatChipGroup.setOnCheckedStateChangeListener { _, _ ->
+            val chipId = formatChipGroup.checkedChipId
+            val newFormat = chipIdToFormat(chipId)
+            if (newFormat != currentFormat) {
+                currentFormat = newFormat
+                prefs.edit().putString(KEY_UID_FORMAT, currentFormat).apply()
+                // 重新格式化显示
+                if (currentUidHex.isNotEmpty()) {
+                    uidText.text = formatUid(currentUidHex, currentFormat)
+                }
+            }
         }
     }
 
@@ -306,8 +333,10 @@ class MainActivity : AppCompatActivity() {
         val uidHex = uid.toHexString().uppercase()
         val cardType = detectCardType(tag)
 
+        currentUidHex = uidHex
+
         runOnUiThread {
-            uidText.text = formatUidWithSpaces(uidHex)
+            uidText.text = formatUid(uidHex, currentFormat)
             cardTypeText.text = cardType
             hintText.text = "UID已读取"
         }
@@ -332,7 +361,57 @@ class MainActivity : AppCompatActivity() {
 
     private fun ByteArray.toHexString(): String = joinToString("") { "%02X".format(it) }
 
-    private fun formatUidWithSpaces(hex: String): String = hex.chunked(2).joinToString(" ")
+    /** 将 HEX UID 按指定格式输出 */
+    private fun formatUid(hex: String, format: String): String {
+        return when (format) {
+            "hex_with_space" -> hex.chunked(2).joinToString(" ")
+            "hex_no_space" -> hex
+            "hex_reverse" -> hex.chunked(2).reversed().joinToString("")
+            "decimal" -> {
+                val width = if (hex.length <= 8) 10 else 17
+                hex.toLong(16).toString().padStart(width, '0')
+            }
+            "decimal_reverse" -> {
+                val reversed = hex.chunked(2).reversed().joinToString("")
+                val width = if (hex.length <= 8) 10 else 17
+                reversed.toLong(16).toString().padStart(width, '0')
+            }
+            "wahid" -> {
+                // WAHID = 倒序十进制
+                val reversed = hex.chunked(2).reversed().joinToString("")
+                val width = if (hex.length <= 8) 10 else 17
+                reversed.toLong(16).toString().padStart(width, '0')
+            }
+            else -> hex.chunked(2).joinToString(" ")
+        }
+    }
+
+    /** Chip ID -> 格式 key */
+    private fun chipIdToFormat(chipId: Int): String = when (chipId) {
+        R.id.chipHexSpace -> "hex_with_space"
+        R.id.chipHexNoSpace -> "hex_no_space"
+        R.id.chipHexReverse -> "hex_reverse"
+        R.id.chipDec -> "decimal"
+        R.id.chipDecReverse -> "decimal_reverse"
+        R.id.chipWahid -> "wahid"
+        else -> "hex_with_space"
+    }
+
+    /** 格式 key -> Chip ID */
+    private fun formatToChipId(format: String): Int = when (format) {
+        "hex_with_space" -> R.id.chipHexSpace
+        "hex_no_space" -> R.id.chipHexNoSpace
+        "hex_reverse" -> R.id.chipHexReverse
+        "decimal" -> R.id.chipDec
+        "decimal_reverse" -> R.id.chipDecReverse
+        "wahid" -> R.id.chipWahid
+        else -> R.id.chipHexSpace
+    }
+
+    /** 恢复上次的格式选择 */
+    private fun restoreFormatChip(format: String) {
+        formatChipGroup.check(formatToChipId(format))
+    }
 
     private fun sendUid(uid: String, cardType: String) {
         if (!isConnected) {
