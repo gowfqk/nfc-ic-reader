@@ -1107,10 +1107,11 @@ class MainWindow(QMainWindow):
     def process_received(self, data: str):
         """处理接收到的数据"""
         try:
-            print(f'[TcpServer] 收到数据: {data}', flush=True)
+            print(f'[process_received] 收到数据: {data}', flush=True)
             json_data = json.loads(data)
             uid = json_data.get('uid', '')
             card_type = json_data.get('type', 'unknown')
+            print(f'[process_received] uid={uid}, type={card_type}', flush=True)
             
             # 更新显示
             self.last_read_label.setText(f'上次读取: {uid} ({card_type})')
@@ -1127,8 +1128,10 @@ class MainWindow(QMainWindow):
             QTimer.singleShot(2000, self.stop_blink)
             
         except json.JSONDecodeError as e:
-            print(f'[TcpServer] JSON 解析失败: {data!r} ({e})', flush=True)
+            print(f'[process_received] JSON 解析失败: {data!r} ({e})', flush=True)
             self.status_bar.showMessage(f'无效数据: {data[:50]}')
+        except Exception as e:
+            print(f'[process_received] 异常: {type(e).__name__}: {e}', flush=True)
     
     def simulate_input(self, uid: str):
         """模拟键盘输入"""
@@ -1136,6 +1139,8 @@ class MainWindow(QMainWindow):
         
         # 格式化 UID
         formatted_uid = UidFormatter.get_formatted(uid, settings['output_format'])
+        print(f'[simulate_input] uid={uid}, format={settings["output_format"]}, formatted={formatted_uid}', flush=True)
+        print(f'[simulate_input] keyboard_available={self.keyboard_sim.keyboard_available}', flush=True)
         
         # 前缀
         prefix_type = settings['prefix_type']
@@ -1227,9 +1232,11 @@ class MainWindow(QMainWindow):
     
     def on_client_connected(self, addr: str):
         """客户端连接"""
+        print(f'[UI] on_client_connected 被调用: {addr}', flush=True)
         self.status_label.setText(f'状态: 手机已连接 ({addr})')
         self.status_label.setStyleSheet('color: #4CAF50; font-weight: bold;')
         self.status_bar.showMessage(f'手机已连接 ({addr})')
+        print(f'[UI] on_client_connected 已更新 UI', flush=True)
     
     def on_client_disconnected(self):
         """客户端断开"""
