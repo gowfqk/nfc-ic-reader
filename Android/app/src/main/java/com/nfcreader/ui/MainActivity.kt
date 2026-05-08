@@ -347,13 +347,19 @@ class MainActivity : AppCompatActivity() {
         }
         val message = json.toString() + "\n"
 
-        if (radioWifi.isChecked) {
-            tcpClient?.send(message)
-        } else {
-            tcpServer?.broadcast(message)
-        }
-
-        runOnUiThread { hintText.text = getString(R.string.uid_sent) }
+        // 网络操作必须在子线程，否则 Android 抛 NetworkOnMainThreadException
+        Thread {
+            try {
+                if (radioWifi.isChecked) {
+                    tcpClient?.send(message)
+                } else {
+                    tcpServer?.broadcast(message)
+                }
+                runOnUiThread { hintText.text = getString(R.string.uid_sent) }
+            } catch (e: Exception) {
+                runOnUiThread { hintText.text = "发送失败: ${e.message}" }
+            }
+        }.start()
     }
 
     // ── NFC 前台调度生命周期 ──────────────────────────
