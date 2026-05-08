@@ -33,7 +33,7 @@ from PyQt5.QtWidgets import (
     QRadioButton, QComboBox, QSystemTrayIcon, QMenu, QAction,
     QDialog, QGridLayout, QFileDialog, QStatusBar, QMessageBox
 )
-from PyQt5.QtCore import Qt, QTimer, QSettings
+from PyQt5.QtCore import Qt, QTimer, QSettings, QObject, pyqtSignal
 from PyQt5.QtGui import QIcon, QColor, QPalette
 
 # 配置常量
@@ -1262,53 +1262,76 @@ class MainWindow(QMainWindow):
         QApplication.quit()
 
 
+class _Signals(QObject):
+    """信号桥接：后台线程通过信号安全地更新 UI"""
+    client_connected = pyqtSignal(str)
+    client_disconnected = pyqtSignal()
+    data_received = pyqtSignal(str)
+    status_changed = pyqtSignal(str)
+    connected = pyqtSignal()
+    disconnected = pyqtSignal()
+    error = pyqtSignal(str)
+
+
 class ServerCallback:
     """服务器回调"""
     def __init__(self, window):
         self.window = window
+        self._sig = _Signals()
+        self._sig.client_connected.connect(window.on_client_connected)
+        self._sig.client_disconnected.connect(window.on_client_disconnected)
+        self._sig.data_received.connect(window.process_received)
+        self._sig.status_changed.connect(window.status_bar.showMessage)
+        self._sig.error.connect(window.status_bar.showMessage)
     
     def on_status_changed(self, msg):
         print(f'[ServerCallback] on_status_changed: {msg}', flush=True)
-        QTimer.singleShot(0, lambda: self.window.status_bar.showMessage(msg))
+        self._sig.status_changed.emit(msg)
     
     def on_client_connected(self, addr):
         print(f'[ServerCallback] on_client_connected: {addr}', flush=True)
-        QTimer.singleShot(0, lambda: self.window.on_client_connected(addr))
+        self._sig.client_connected.emit(addr)
     
     def on_client_disconnected(self):
         print('[ServerCallback] on_client_disconnected', flush=True)
-        QTimer.singleShot(0, lambda: self.window.on_client_disconnected())
+        self._sig.client_disconnected.emit()
     
     def on_data_received(self, data):
         print(f'[ServerCallback] on_data_received: {data[:80]}', flush=True)
-        QTimer.singleShot(0, lambda: self.window.process_received(data))
+        self._sig.data_received.emit(data)
     
     def on_error(self, msg):
         print(f'[ServerCallback] on_error: {msg}', flush=True)
-        QTimer.singleShot(0, lambda: self.window.status_bar.showMessage(msg))
+        self._sig.error.emit(msg)
 
 
 class ClientCallback:
     """客户端回调"""
     def __init__(self, window):
         self.window = window
+        self._sig = _Signals()
+        self._sig.connected.connect(window.on_connected)
+        self._sig.disconnected.connect(window.on_disconnected)
+        self._sig.data_received.connect(window.process_received)
+        self._sig.status_changed.connect(window.status_bar.showMessage)
+        self._sig.error.connect(window.status_bar.showMessage)
     
     def on_connected(self):
         print('[ClientCallback] on_connected', flush=True)
-        QTimer.singleShot(0, lambda: self.window.on_connected())
+        self._sig.connected.emit()
     
     def on_disconnected(self):
         print('[ClientCallback] on_disconnected', flush=True)
-        QTimer.singleShot(0, lambda: self.window.on_disconnected())
+        self._sig.disconnected.emit()
     
     def on_data_received(self, data):
-        QTimer.singleShot(0, lambda: self.window.process_received(data))
+        self._sig.data_received.emit(data)
     
     def on_error(self, msg):
-        QTimer.singleShot(0, lambda: self.window.status_bar.showMessage(msg))
+        self._sig.error.emit(msg)
     
     def on_status_changed(self, msg):
-        QTimer.singleShot(0, lambda: self.window.status_bar.showMessage(msg))
+        self._sig.status_changed.emit(msg)
 
 
 def main():
