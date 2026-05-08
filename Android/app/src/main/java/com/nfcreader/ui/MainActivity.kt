@@ -1,6 +1,9 @@
 package com.nfcreader.ui
 
 import android.app.PendingIntent
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.SharedPreferences
@@ -51,6 +54,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var cardTypeText: TextView
     private lateinit var hintText: TextView
     private lateinit var formatChipGroup: ChipGroup
+    private lateinit var copyButton: com.google.android.material.button.MaterialButton
 
     // 网络连接组件
     private var tcpClient: TcpClient? = null
@@ -112,6 +116,7 @@ class MainActivity : AppCompatActivity() {
         cardTypeText = findViewById(R.id.cardTypeText)
         hintText = findViewById(R.id.hintText)
         formatChipGroup = findViewById(R.id.formatChipGroup)
+        copyButton = findViewById(R.id.copyButton)
     }
 
     private fun initNfc() {
@@ -209,6 +214,21 @@ class MainActivity : AppCompatActivity() {
                 if (currentUidHex.isNotEmpty()) {
                     uidText.text = formatUid(currentUidHex, currentFormat)
                 }
+            }
+        }
+
+        // 复制卡号
+        copyButton.setOnClickListener {
+            if (currentUidHex.isNotEmpty()) {
+                val text = formatUid(currentUidHex, currentFormat)
+                val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                clipboard.setPrimaryClip(ClipData.newPlainText("UID", text))
+                // Android 13+ 以下显示提示
+                if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.S_V2) {
+                    Toast.makeText(this, "已复制: $text", Toast.LENGTH_SHORT).show()
+                }
+            } else {
+                Toast.makeText(this, "还没有读取到卡号", Toast.LENGTH_SHORT).show()
             }
         }
     }
