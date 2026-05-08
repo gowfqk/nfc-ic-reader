@@ -1013,9 +1013,9 @@ class MainWindow(QMainWindow):
 
     def toggle_wifi(self):
         """切换 WiFi 服务器"""
-        print('[UI] toggle_wifi 被调用', flush=True, flush=True)
+        print('[UI] toggle_wifi 被调用', flush=True)
         if self.tcp_server and self.tcp_server.is_running:
-            print('[UI] 停止服务器', flush=True, flush=True)
+            print('[UI] 停止服务器', flush=True)
             self.tcp_server.stop()
             self.tcp_server = None
             self.wifi_btn.setText('启动服务器')
@@ -1027,7 +1027,7 @@ class MainWindow(QMainWindow):
             if port is None:
                 QMessageBox.warning(self, '错误', f'端口无效，范围 1-65535')
                 return
-            print(f'[UI] 启动服务器，端口 {port}', flush=True, flush=True)
+            print(f'[UI] 启动服务器，端口 {port}', flush=True)
             self.tcp_server = TcpServer(port, callback=ServerCallback(self))
             self.tcp_server.start()
             self.wifi_btn.setText('停止服务器')
@@ -1037,9 +1037,9 @@ class MainWindow(QMainWindow):
     
     def toggle_adb(self):
         """切换 ADB 连接"""
-        print('[UI] toggle_adb 被调用', flush=True, flush=True)
+        print('[UI] toggle_adb 被调用', flush=True)
         if self.tcp_client:
-            print('[UI] 断开 ADB', flush=True, flush=True)
+            print('[UI] 断开 ADB', flush=True)
             self.tcp_client.disconnect()
             self.tcp_client = None
             if self.current_forward_port:
@@ -1053,17 +1053,17 @@ class MainWindow(QMainWindow):
         else:
             local_port = self._parse_port(self.adb_local.text(), DEFAULT_ADB_LOCAL_PORT)
             remote_port = self._parse_port(self.adb_remote.text(), DEFAULT_ADB_LOCAL_PORT)
-            print(f'[UI] ADB 转发 local={local_port} remote={remote_port}', flush=True, flush=True)
+            print(f'[UI] ADB 转发 local={local_port} remote={remote_port}', flush=True)
             if local_port is None or remote_port is None:
                 QMessageBox.warning(self, '错误', '端口无效，范围 1-65535')
                 return
             
             if not AdbHelper.forward(local_port, remote_port):
-                print('[UI] ADB 转发失败', flush=True, flush=True)
+                print('[UI] ADB 转发失败', flush=True)
                 QMessageBox.warning(self, '错误', '创建 ADB 转发失败')
                 return
             
-            print('[UI] ADB 转发成功，创建 TcpClient', flush=True, flush=True)
+            print('[UI] ADB 转发成功，创建 TcpClient', flush=True)
             self.current_forward_port = local_port
             self.tcp_client = TcpClient('127.0.0.1', local_port, callback=ClientCallback(self))
             self.tcp_client.connect()
