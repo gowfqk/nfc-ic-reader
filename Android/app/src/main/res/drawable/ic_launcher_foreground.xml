@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- NFC 图标 -->
+    <group android:translateX="24" android:translateY="24">
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M30,12L30,52C30,55.31 27.31,58 24,58L12,58C8.69,58 6,55.31 6,52L6,12C6,8.69 8.69,6 12,6L24,6C27.31,6 30,8.69 30,12Z"/>
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M20,14L16,14L16,50L20,50L20,14Z"/>
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M42,12L42,52C42,55.31 39.31,58 36,58L24,58C20.69,58 18,55.31 18,52L18,12C18,8.69 20.69,6 24,6L36,6C39.31,6 42,8.69 42,12Z"/>
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M50,16L50,48C50,50.21 48.21,52 46,52L38,52C35.79,52 34,50.21 34,48L34,16C34,13.79 35.79,12 38,12L46,12C48.21,12 50,13.79 50,16Z"/>
+    </group>
+</vector>

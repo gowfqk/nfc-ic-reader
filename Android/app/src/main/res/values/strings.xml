@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">NFC读卡器</string>
+    <string name="nfc_not_available">NFC不可用</string>
+    <string name="nfc_disabled">NFC未开启，请到设置中启用NFC</string>
+    <string name="server_ip">服务器IP</string>
+    <string name="server_port">端口</string>
+    <string name="connect">连接</string>
+    <string name="disconnect">断开</string>
+    <string name="status_disconnected">未连接</string>
+    <string name="status_connected">已连接</string>
+    <string name="status_connecting">连接中...</string>
+    <string name="hint_ip">输入电脑IP地址，如192.168.1.100</string>
+    <string name="hint_port">端口号，默认8888</string>
+    <string name="last_uid">上次读取的UID</string>
+    <string name="no_uid">未读取到卡片</string>
+    <string name="waiting_card">请将IC卡靠近手机NFC感应区</string>
+    <string name="uid_sent">UID已发送</string>
+    <string name="uid_read_failed">读取UID失败</string>
+    <string name="send_failed">发送失败，请检查网络连接</string>
+    <string name="connection_lost">连接已断开</string>
+    <string name="service_running">NFC服务运行中</string>
+    <string name="tap_to_read">贴卡即读</string>
+    <string name="save_settings">保存设置</string>
+    <string name="settings_saved">设置已保存</string>
+    <string name="notification_channel_name">NFC服务通知</string>
+    <string name="notification_channel_desc">保持NFC后台读取服务</string>
+    <string name="foreground_notification_title">NFC读卡器运行中</string>
+    <string name="foreground_notification_text">点击可打开设置界面</string>
+</resources>
