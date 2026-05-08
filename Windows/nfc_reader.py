@@ -12,6 +12,7 @@ import sys
 import json
 import os
 import socket
+import select
 import threading
 import subprocess
 from datetime import datetime
@@ -173,7 +174,10 @@ class TcpServer:
             
             while self.is_running:
                 try:
-                    self.server_socket.settimeout(1.0)
+                    # 用 select 等待连接，避免 Windows settimeout 10038 错误
+                    readable, _, _ = select.select([self.server_socket], [], [], 1.0)
+                    if not readable:
+                        continue
                     try:
                         client, addr = self.server_socket.accept()
                         client.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
@@ -182,8 +186,9 @@ class TcpServer:
                             self.client_socket = client
                         self.callback.on_client_connected(addr[0])
                         self._receive_data(client)
-                    except socket.timeout:
-                        continue
+                    except Exception as e:
+                        if self.is_running:
+                            print(f'[TcpServer] accept 异常: {e}')
                         
                 except Exception as e:
                     if self.is_running:
@@ -208,7 +213,10 @@ class TcpServer:
         try:
             while self.is_running:
                 try:
-                    client.settimeout(5.0)
+                    # 用 select 检查可读，避免 Windows settimeout 10038 错误
+                    readable, _, _ = select.select([client], [], [], 5.0)
+                    if not readable:
+                        continue
                     data = client.recv(1024)
                     if not data:
                         print(f'[TcpServer] 客户端 {peer} 断开（空数据）')
@@ -300,9 +308,19 @@ class TcpClient:
             try:
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
-                sock.settimeout(5)
-                sock.connect((self.host, self.port))
-                sock.settimeout(None)
+                # 用 select 做连接超时，避免 Windows settimeout 问题
+                sock.setblocking(False)
+                try:
+                    sock.connect((self.host, self.port))
+                except BlockingIOError:
+                    # 非阻塞连接进行中，等待完成
+                    _, writable, _ = select.select([], [sock], [], 5.0)
+                    if not writable:
+                        raise socket.timeout('连接超时')
+                    err = sock.getsockopt(socket.SOL_SOCKET, socket.SO_ERROR)
+                    if err != 0:
+                        raise ConnectionRefusedError(f'连接被拒绝 (errno={err})')
+                sock.setblocking(True)
                 with self._lock:
                     self.socket = sock
                 self.callback.on_connected()
@@ -327,7 +345,10 @@ class TcpClient:
         try:
             while self.is_running:
                 try:
-                    sock.settimeout(0.5)
+                    # 用 select 检查可读，避免 Windows settimeout 10038 错误
+                    readable, _, _ = select.select([sock], [], [], 0.5)
+                    if not readable:
+                        continue
                     data = sock.recv(1024).decode('utf-8')
                     if not data:
                         break
@@ -339,8 +360,6 @@ class TcpClient:
                         if line.strip():
                             self.callback.on_data_received(line.strip())
                             
-                except socket.timeout:
-                    continue
                 except OSError:
                     break
         finally:
