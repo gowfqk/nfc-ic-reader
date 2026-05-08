@@ -721,6 +721,14 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         
+        # 事件队列（后台线程 -> 主线程 UI 更新）
+        self.eq = _EventQueue()
+        self.eq.register('client_connected', self.on_client_connected)
+        self.eq.register('client_disconnected', self.on_client_disconnected)
+        self.eq.register('data_received', self.process_received)
+        self.eq.register('connected', self.on_connected)
+        self.eq.register('disconnected', self.on_disconnected)
+        
         # 加载设置
         self.app_settings = QSettings('NFCReader', 'NFCReader')
         
@@ -739,6 +747,12 @@ class MainWindow(QMainWindow):
         
         # 初始化 UI
         self.init_ui()
+        
+        # UI 初始化后注册需要 status_bar 的事件
+        self.eq.register('server_status', self.status_bar.showMessage)
+        self.eq.register('error', self.status_bar.showMessage)
+        self.eq.register('client_status', self.status_bar.showMessage)
+        self.eq.start(50)  # 每 50ms 检查队列
         
         # 初始化托盘
         self.init_tray()
@@ -1028,7 +1042,7 @@ class MainWindow(QMainWindow):
                 QMessageBox.warning(self, '错误', f'端口无效，范围 1-65535')
                 return
             print(f'[UI] 启动服务器，端口 {port}', flush=True)
-            self.tcp_server = TcpServer(port, callback=ServerCallback(self))
+            self.tcp_server = TcpServer(port, callback=ServerCallback(self.eq))
             self.tcp_server.start()
             self.wifi_btn.setText('停止服务器')
             self.wifi_port.setEnabled(False)
@@ -1065,7 +1079,7 @@ class MainWindow(QMainWindow):
             
             print('[UI] ADB 转发成功，创建 TcpClient', flush=True)
             self.current_forward_port = local_port
-            self.tcp_client = TcpClient('127.0.0.1', local_port, callback=ClientCallback(self))
+            self.tcp_client = TcpClient('127.0.0.1', local_port, callback=ClientCallback(self.eq))
             self.tcp_client.connect()
             self.adb_btn.setText('断开连接')
             self.adb_local.setEnabled(False)
@@ -1262,76 +1276,88 @@ class MainWindow(QMainWindow):
         QApplication.quit()
 
 
-class _Signals(QObject):
-    """信号桥接：后台线程通过信号安全地更新 UI"""
-    client_connected = pyqtSignal(str)
-    client_disconnected = pyqtSignal()
-    data_received = pyqtSignal(str)
-    status_changed = pyqtSignal(str)
-    connected = pyqtSignal()
-    disconnected = pyqtSignal()
-    error = pyqtSignal(str)
+import queue
+
+
+class _EventQueue:
+    """线程安全事件队列，后台线程放入事件，主线程定时消费"""
+    def __init__(self):
+        self._queue = queue.Queue()
+        self._timer = None
+        self._handlers = {}
+    
+    def start(self, interval=50):
+        """启动轮询定时器"""
+        self._timer = QTimer()
+        self._timer.timeout.connect(self._process)
+        self._timer.start(interval)
+    
+    def register(self, event_name, handler):
+        """注册事件处理器"""
+        self._handlers[event_name] = handler
+    
+    def put(self, event_name, data=None):
+        """放入事件（线程安全）"""
+        self._queue.put((event_name, data))
+    
+    def _process(self):
+        """主线程定时调用，处理队列中的事件"""
+        while True:
+            try:
+                event_name, data = self._queue.get_nowait()
+            except queue.Empty:
+                break
+            handler = self._handlers.get(event_name)
+            if handler:
+                try:
+                    if data is None:
+                        handler()
+                    else:
+                        handler(data)
+                except Exception as e:
+                    print(f'[_EventQueue] 处理事件 {event_name} 出错: {e}', flush=True)
 
 
 class ServerCallback:
     """服务器回调"""
-    def __init__(self, window):
-        self.window = window
-        self._sig = _Signals()
-        self._sig.client_connected.connect(window.on_client_connected)
-        self._sig.client_disconnected.connect(window.on_client_disconnected)
-        self._sig.data_received.connect(window.process_received)
-        self._sig.status_changed.connect(window.status_bar.showMessage)
-        self._sig.error.connect(window.status_bar.showMessage)
+    def __init__(self, eq):
+        self.eq = eq
     
     def on_status_changed(self, msg):
-        print(f'[ServerCallback] on_status_changed: {msg}', flush=True)
-        self._sig.status_changed.emit(msg)
+        self.eq.put('server_status', msg)
     
     def on_client_connected(self, addr):
-        print(f'[ServerCallback] on_client_connected: {addr}', flush=True)
-        self._sig.client_connected.emit(addr)
+        self.eq.put('client_connected', addr)
     
     def on_client_disconnected(self):
-        print('[ServerCallback] on_client_disconnected', flush=True)
-        self._sig.client_disconnected.emit()
+        self.eq.put('client_disconnected')
     
     def on_data_received(self, data):
-        print(f'[ServerCallback] on_data_received: {data[:80]}', flush=True)
-        self._sig.data_received.emit(data)
+        self.eq.put('data_received', data)
     
     def on_error(self, msg):
-        print(f'[ServerCallback] on_error: {msg}', flush=True)
-        self._sig.error.emit(msg)
+        self.eq.put('error', msg)
 
 
 class ClientCallback:
     """客户端回调"""
-    def __init__(self, window):
-        self.window = window
-        self._sig = _Signals()
-        self._sig.connected.connect(window.on_connected)
-        self._sig.disconnected.connect(window.on_disconnected)
-        self._sig.data_received.connect(window.process_received)
-        self._sig.status_changed.connect(window.status_bar.showMessage)
-        self._sig.error.connect(window.status_bar.showMessage)
+    def __init__(self, eq):
+        self.eq = eq
     
     def on_connected(self):
-        print('[ClientCallback] on_connected', flush=True)
-        self._sig.connected.emit()
+        self.eq.put('connected')
     
     def on_disconnected(self):
-        print('[ClientCallback] on_disconnected', flush=True)
-        self._sig.disconnected.emit()
+        self.eq.put('disconnected')
     
     def on_data_received(self, data):
-        self._sig.data_received.emit(data)
+        self.eq.put('data_received', data)
     
     def on_error(self, msg):
-        self._sig.error.emit(msg)
+        self.eq.put('error', msg)
     
     def on_status_changed(self, msg):
-        self._sig.status_changed.emit(msg)
+        self.eq.put('client_status', msg)
 
 
 def main():
