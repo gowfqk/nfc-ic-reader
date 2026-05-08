@@ -149,6 +149,7 @@ class TcpServer:
         self.client_socket: Optional[socket.socket] = None
         self.is_running = False
         self.thread: Optional[threading.Thread] = None
+        self._lock = threading.Lock()
     
     def start(self):
         """启动服务器"""
@@ -167,69 +168,109 @@ class TcpServer:
             self.server_socket.listen(1)
             self.is_running = True
             
-            self.callback.on_status_changed('等待手机连接...')
+            self.callback.on_status_changed(f'等待手机连接... (监听 0.0.0.0:{self.port})')
+            print(f'[TcpServer] 已启动，监听端口 {self.port}')
             
             while self.is_running:
                 try:
                     self.server_socket.settimeout(1.0)
                     try:
-                        self.client_socket, addr = self.server_socket.accept()
+                        client, addr = self.server_socket.accept()
+                        client.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+                        print(f'[TcpServer] 接受连接来自 {addr[0]}:{addr[1]}')
+                        with self._lock:
+                            self.client_socket = client
                         self.callback.on_client_connected(addr[0])
-                        self._receive_data()
+                        self._receive_data(client)
                     except socket.timeout:
                         continue
                         
                 except Exception as e:
                     if self.is_running:
+                        print(f'[TcpServer] 连接错误: {e}')
                         self.callback.on_error(f'连接错误: {e}')
         
+        except OSError as e:
+            print(f'[TcpServer] 绑定失败: {e}')
+            self.callback.on_error(f'端口 {self.port} 绑定失败: {e}')
         except Exception as e:
+            print(f'[TcpServer] 服务器错误: {e}')
             self.callback.on_error(f'服务器错误: {e}')
         finally:
+            print('[TcpServer] 已关闭')
             self._cleanup()
     
-    def _receive_data(self):
+    def _receive_data(self, client: socket.socket):
         """接收客户端数据"""
         buffer = ''
-        while self.is_running:
-            try:
-                self.client_socket.settimeout(0.5)
-                data = self.client_socket.recv(1024).decode('utf-8')
-                if not data:
+        peer = client.getpeername()
+        print(f'[TcpServer] 开始接收数据 from {peer}')
+        try:
+            while self.is_running:
+                try:
+                    client.settimeout(5.0)
+                    data = client.recv(1024)
+                    if not data:
+                        print(f'[TcpServer] 客户端 {peer} 断开（空数据）')
+                        break
+                    
+                    text = data.decode('utf-8')
+                    buffer += text
+                    
+                    while '\n' in buffer:
+                        line, buffer = buffer.split('\n', 1)
+                        if line.strip():
+                            print(f'[TcpServer] 收到: {line.strip()}')
+                            self.callback.on_data_received(line.strip())
+                            
+                except socket.timeout:
+                    continue
+                except OSError as e:
+                    print(f'[TcpServer] 接收 OSError: {e}')
                     break
-                
-                buffer += data
-                
-                while '\n' in buffer:
-                    line, buffer = buffer.split('\n', 1)
-                    if line.strip():
-                        self.callback.on_data_received(line.strip())
-                        
-            except socket.timeout:
-                continue
+                except Exception as e:
+                    print(f'[TcpServer] 接收异常: {type(e).__name__}: {e}')
+                    break
+        finally:
+            print(f'[TcpServer] 关闭客户端连接 {peer}')
+            try:
+                client.close()
             except Exception:
-                break
-        
-        self.client_socket.close()
-        self.client_socket = None
-        self.callback.on_client_disconnected()
+                pass
+            with self._lock:
+                if self.client_socket is client:
+                    self.client_socket = None
+            if self.is_running:
+                self.callback.on_client_disconnected()
     
     def stop(self):
         """停止服务器"""
         self.is_running = False
-        self._cleanup()
+        # 不在这里清理 socket，交给后台线程的 finally 处理
+        # 只关闭 server_socket 让 accept() 退出，client_socket 由 _receive_data 自行关闭
+        with self._lock:
+            if self.server_socket:
+                try:
+                    self.server_socket.close()
+                except Exception:
+                    pass
+                self.server_socket = None
     
     def _cleanup(self):
-        """清理资源"""
-        try:
+        """清理资源（仅由 _run_server 的 finally 调用）"""
+        with self._lock:
             if self.client_socket:
-                self.client_socket.close()
+                try:
+                    self.client_socket.close()
+                except Exception:
+                    pass
+                self.client_socket = None
             if self.server_socket:
-                self.server_socket.close()
-        except Exception:
-            pass
-        self.client_socket = None
-        self.server_socket = None
+                try:
+                    self.server_socket.close()
+                except Exception:
+                    pass
+                self.server_socket = None
 
 
 class TcpClient:
@@ -242,6 +283,7 @@ class TcpClient:
         self.socket: Optional[socket.socket] = None
         self.is_running = False
         self.thread: Optional[threading.Thread] = None
+        self._lock = threading.Lock()
     
     def connect(self):
         """连接到服务器"""
@@ -253,66 +295,73 @@ class TcpClient:
         self.thread.start()
     
     def _run_client(self):
-        """客户端主循环"""
+        """客户端主循环（带自动重连）"""
         while self.is_running:
             try:
-                self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                self.socket.connect((self.host, self.port))
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+                sock.settimeout(5)
+                sock.connect((self.host, self.port))
+                sock.settimeout(None)
+                with self._lock:
+                    self.socket = sock
                 self.callback.on_connected()
-                self._receive_data()
+                self._receive_data(sock)
                 
             except ConnectionRefusedError:
-                self.callback.on_status_changed('连接被拒绝，请检查手机端是否启动服务')
-                QTimer.singleShot(2000, self._reconnect)
-                return
+                self.callback.on_status_changed('连接被拒绝，2秒后重试...')
+            except socket.timeout:
+                self.callback.on_status_changed('连接超时，2秒后重试...')
             except Exception as e:
                 if self.is_running:
-                    self.callback.on_error(f'连接错误: {e}')
-                    QTimer.singleShot(2000, self._reconnect)
-                    return
+                    self.callback.on_error(f'连接错误: {e}，2秒后重试...')
             
-            self.is_running = False
+            # 断开后等待重连
+            if self.is_running:
+                import time
+                time.sleep(2)
     
-    def _receive_data(self):
+    def _receive_data(self, sock: socket.socket):
         """接收数据"""
         buffer = ''
-        while self.is_running:
-            try:
-                self.socket.settimeout(0.5)
-                data = self.socket.recv(1024).decode('utf-8')
-                if not data:
+        try:
+            while self.is_running:
+                try:
+                    sock.settimeout(0.5)
+                    data = sock.recv(1024).decode('utf-8')
+                    if not data:
+                        break
+                    
+                    buffer += data
+                    
+                    while '\n' in buffer:
+                        line, buffer = buffer.split('\n', 1)
+                        if line.strip():
+                            self.callback.on_data_received(line.strip())
+                            
+                except socket.timeout:
+                    continue
+                except OSError:
                     break
-                
-                buffer += data
-                
-                while '\n' in buffer:
-                    line, buffer = buffer.split('\n', 1)
-                    if line.strip():
-                        self.callback.on_data_received(line.strip())
-                        
-            except socket.timeout:
-                continue
+        finally:
+            try:
+                sock.close()
             except Exception:
-                break
-        
-        if self.is_running:
-            self.callback.on_disconnected()
-    
-    def _reconnect(self):
-        """重新连接"""
-        if self.is_running and not self.socket:
-            self.thread = threading.Thread(target=self._run_client, daemon=True)
-            self.thread.start()
+                pass
+            with self._lock:
+                if self.socket is sock:
+                    self.socket = None
     
     def disconnect(self):
         """断开连接"""
         self.is_running = False
-        if self.socket:
-            try:
-                self.socket.close()
-            except Exception:
-                pass
-            self.socket = None
+        with self._lock:
+            if self.socket:
+                try:
+                    self.socket.close()
+                except Exception:
+                    pass
+                self.socket = None
 
 
 class KeyboardSimulator:
@@ -329,7 +378,7 @@ class KeyboardSimulator:
         
         try:
             # 使用 write 一次性输入，速度更快更稳定
-            keyboard.write(text, delay=0)
+            keyboard.write(text, delay=0.01)
             return True
         except Exception as e:
             print(f"[KeyboardSimulator] 输入失败: {e}")
@@ -435,10 +484,7 @@ class SettingsDialog(QDialog):
         keyboard_layout = QVBoxLayout(keyboard_group)
         
         # 输出格式
-        format_layout = QHBoxLayout()
-        format_layout.addWidget(QLabel('输出格式：'))
-        self.format_combo = QComboBox()
-        self.format_combo.addItems([
+        self.FORMAT_OPTIONS = [
             ('hex_no_space', 'HEX 无空格 (如 01020304)'),
             ('hex_with_space', 'HEX 带空格 (如 01 02 03 04)'),
             ('hex_reverse_no_space', 'HEX 倒序无空格 (如 04030201)'),
@@ -446,7 +492,12 @@ class SettingsDialog(QDialog):
             ('decimal_normal', '十进制正序'),
             ('decimal_reverse', '十进制倒序'),
             ('wahid', 'WAHID 门禁格式'),
-        ])
+        ]
+        format_layout = QHBoxLayout()
+        format_layout.addWidget(QLabel('输出格式：'))
+        self.format_combo = QComboBox()
+        for key, label in self.FORMAT_OPTIONS:
+            self.format_combo.addItem(label, key)
         self.format_combo.setCurrentIndex(0)
         format_layout.addWidget(self.format_combo)
         keyboard_layout.addLayout(format_layout)
@@ -553,20 +604,12 @@ class SettingsDialog(QDialog):
     
     def restore_settings(self):
         """恢复当前设置到界面"""
-        # 输出格式
+        # 输出格式 — 通过 itemData 匹配 key
         format_key = self.settings.get('output_format', 'hex_no_space')
-        for i, (key, _) in enumerate(self.format_combo.itemData(Qt.UserRole) or []):
-            pass
         for i in range(self.format_combo.count()):
             if self.format_combo.itemData(i) == format_key:
                 self.format_combo.setCurrentIndex(i)
                 break
-        else:
-            # 按文本匹配
-            for i in range(self.format_combo.count()):
-                if format_key in self.format_combo.itemText(i).lower():
-                    self.format_combo.setCurrentIndex(i)
-                    break
         
         # 前缀
         prefix_type = self.settings.get('prefix_type', 'none')
@@ -612,23 +655,8 @@ class SettingsDialog(QDialog):
     
     def get_settings(self) -> dict:
         """获取设置"""
-        # 解析输出格式
-        format_text = self.format_combo.currentText()
-        format_key = 'hex_no_space'
-        if '无空格' in format_text and '倒序' not in format_text:
-            format_key = 'hex_no_space'
-        elif '带空格' in format_text and '倒序' not in format_text:
-            format_key = 'hex_with_space'
-        elif '倒序' in format_text and '带空格' in format_text:
-            format_key = 'hex_reverse_with_space'
-        elif '倒序' in format_text and '无空格' in format_text:
-            format_key = 'hex_reverse_no_space'
-        elif '十进制正序' in format_text:
-            format_key = 'decimal_normal'
-        elif '十进制倒序' in format_text:
-            format_key = 'decimal_reverse'
-        elif 'WAHID' in format_text or '门禁' in format_text:
-            format_key = 'wahid'
+        # 输出格式 — 直接取 itemData
+        format_key = self.format_combo.currentData() or 'hex_no_space'
         
         # 前缀类型
         prefix_types = ['none', 'enter_before', 'tab_before', 'custom']
@@ -931,6 +959,16 @@ class MainWindow(QMainWindow):
             self.adb_status.setText('ADB: 未找到')
             self.adb_status.setStyleSheet('color: #F44336;')
     
+    def _parse_port(self, text: str, default: int) -> Optional[int]:
+        """解析端口号，返回 None 表示无效"""
+        try:
+            port = int(text) if text.strip() else default
+            if 1 <= port <= 65535:
+                return port
+        except ValueError:
+            pass
+        return None
+
     def toggle_wifi(self):
         """切换 WiFi 服务器"""
         if self.tcp_server and self.tcp_server.is_running:
@@ -941,7 +979,10 @@ class MainWindow(QMainWindow):
             self.status_label.setText('状态: 未连接')
             self.status_bar.showMessage('服务器已停止')
         else:
-            port = int(self.wifi_port.text() or str(DEFAULT_WIFI_PORT))
+            port = self._parse_port(self.wifi_port.text(), DEFAULT_WIFI_PORT)
+            if port is None:
+                QMessageBox.warning(self, '错误', f'端口无效，范围 1-65535')
+                return
             self.tcp_server = TcpServer(port, callback=ServerCallback(self))
             self.tcp_server.start()
             self.wifi_btn.setText('停止服务器')
@@ -963,8 +1004,11 @@ class MainWindow(QMainWindow):
             self.status_label.setText('状态: 未连接')
             self.status_bar.showMessage('ADB 连接已断开')
         else:
-            local_port = int(self.adb_local.text() or str(DEFAULT_ADB_LOCAL_PORT))
-            remote_port = int(self.adb_remote.text() or str(DEFAULT_ADB_LOCAL_PORT))
+            local_port = self._parse_port(self.adb_local.text(), DEFAULT_ADB_LOCAL_PORT)
+            remote_port = self._parse_port(self.adb_remote.text(), DEFAULT_ADB_LOCAL_PORT)
+            if local_port is None or remote_port is None:
+                QMessageBox.warning(self, '错误', '端口无效，范围 1-65535')
+                return
             
             if not AdbHelper.forward(local_port, remote_port):
                 QMessageBox.warning(self, '错误', '创建 ADB 转发失败')
@@ -1013,6 +1057,7 @@ class MainWindow(QMainWindow):
     def process_received(self, data: str):
         """处理接收到的数据"""
         try:
+            print(f'[TcpServer] 收到数据: {data}')
             json_data = json.loads(data)
             uid = json_data.get('uid', '')
             card_type = json_data.get('type', 'unknown')
@@ -1031,7 +1076,8 @@ class MainWindow(QMainWindow):
             self.start_blink()
             QTimer.singleShot(2000, self.stop_blink)
             
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as e:
+            print(f'[TcpServer] JSON 解析失败: {data!r} ({e})')
             self.status_bar.showMessage(f'无效数据: {data[:50]}')
     
     def simulate_input(self, uid: str):
@@ -1071,7 +1117,7 @@ class MainWindow(QMainWindow):
             self.keyboard_sim.type_enter()
     
     def write_to_file(self, uid: str):
-        """写入文件（辅助功能）"""
+        """写入文件（辅助功能），超过 10MB 自动轮转"""
         settings = self.get_settings()
         
         if not settings.get('enable_file_output', False):
@@ -1082,6 +1128,17 @@ class MainWindow(QMainWindow):
             return
         
         try:
+            # 超过 10MB 轮转
+            MAX_SIZE = 10 * 1024 * 1024
+            try:
+                if os.path.exists(output_file) and os.path.getsize(output_file) > MAX_SIZE:
+                    backup = output_file + '.bak'
+                    if os.path.exists(backup):
+                        os.remove(backup)
+                    os.rename(output_file, backup)
+            except OSError:
+                pass
+            
             formatted_uid = UidFormatter.get_formatted(uid, settings.get('output_format', 'hex_no_space'))
             
             with open(output_file, 'a', encoding='utf-8') as f:

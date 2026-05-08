@@ -21,7 +21,8 @@ class TcpServer(
     private var clientSocket: Socket? = null
     private var reader: BufferedReader? = null
     private var writer: BufferedWriter? = null
-    private var isRunning = false
+    @Volatile private var isRunning = false
+    private val lock = Any()
     
     /**
      * 连接监听器接口
@@ -38,30 +39,45 @@ class TcpServer(
     fun start() {
         Thread {
             try {
+                println("[TcpServer] 启动服务器，端口: $port")
                 serverSocket = ServerSocket(port)
                 isRunning = true
+                println("[TcpServer] 服务器已启动，等待连接...")
                 
-                // 监听客户端连接
                 while (isRunning) {
                     try {
-                        clientSocket = serverSocket?.accept()
-                        clientSocket?.let { socket ->
-                            reader = BufferedReader(InputStreamReader(socket.getInputStream()))
-                            writer = BufferedWriter(OutputStreamWriter(socket.getOutputStream()))
+                        val client = serverSocket?.accept() ?: break
+                        println("[TcpServer] 客户端已连接: ${client.inetAddress.hostAddress}")
+                        
+                        val r = BufferedReader(InputStreamReader(client.getInputStream()))
+                        val w = BufferedWriter(OutputStreamWriter(client.getOutputStream()))
+                        
+                        synchronized(lock) {
+                            // 关闭旧连接
+                            try { clientSocket?.close() } catch (_: Exception) {}
+                            try { reader?.close() } catch (_: Exception) {}
+                            try { writer?.close() } catch (_: Exception) {}
                             
-                            listener.onClientConnected(socket.inetAddress.hostAddress ?: "unknown")
-                            
-                            // 监听客户端消息
-                            listenClient()
+                            clientSocket = client
+                            reader = r
+                            writer = w
                         }
+                        
+                        listener.onClientConnected(client.inetAddress.hostAddress ?: "unknown")
+                        
+                        // 监听客户端消息（阻塞）
+                        listenClient(r)
+                        
                     } catch (e: SocketException) {
                         if (isRunning) {
+                            println("[TcpServer] 接受连接失败: ${e.message}")
                             listener.onError("接受连接失败: ${e.message}")
                         }
                     }
                 }
                 
             } catch (e: Exception) {
+                println("[TcpServer] 服务器错误: ${e.message}")
                 listener.onError("服务器错误: ${e.message}")
             } finally {
                 cleanup()
@@ -72,37 +88,56 @@ class TcpServer(
     /**
      * 监听客户端消息
      */
-    private fun listenClient() {
+    private fun listenClient(r: BufferedReader) {
         try {
             while (isRunning) {
-                val message = reader?.readLine()
+                val message = r.readLine()
                 if (message == null) {
-                    // 客户端关闭连接
+                    println("[TcpServer] 客户端断开连接")
                     break
                 }
-                // 可以处理客户端消息
             }
         } catch (e: SocketException) {
-            // 连接被重置
+            println("[TcpServer] 连接中断: ${e.message}")
         } catch (e: Exception) {
             if (isRunning) {
+                println("[TcpServer] 读取错误: ${e.message}")
                 listener.onError("读取数据错误: ${e.message}")
             }
         } finally {
-            cleanup()
+            synchronized(lock) {
+                try { clientSocket?.close() } catch (_: Exception) {}
+                clientSocket = null
+                writer = null
+                reader = null
+            }
             listener.onClientDisconnected()
         }
     }
     
     /**
-     * 发送消息给客户端
+     * 发送消息给客户端（线程安全）
      */
     fun send(message: String) {
+        val w: BufferedWriter?
+        synchronized(lock) {
+            w = writer
+        }
+        if (w == null) {
+            println("[TcpServer] 发送失败: 无客户端连接")
+            listener.onError("发送数据失败: 无客户端连接")
+            return
+        }
         try {
-            writer?.write(message)
-            writer?.flush()
+            println("[TcpServer] 发送数据: ${message.trim()}")
+            synchronized(lock) {
+                w.write(message)
+                w.flush()
+            }
+            println("[TcpServer] 发送成功")
         } catch (e: Exception) {
-            listener.onError("发送数据失败: ${e.message}")
+            println("[TcpServer] 发送失败: ${e.javaClass.simpleName}: ${e.message}")
+            listener.onError("发送数据失败: ${e.message ?: e.javaClass.simpleName}")
         }
     }
     
@@ -130,22 +165,24 @@ class TcpServer(
      * 清理资源
      */
     private fun cleanup() {
-        try {
-            writer?.close()
-            reader?.close()
-            clientSocket?.close()
-        } catch (e: Exception) {
-            // 忽略清理错误
+        synchronized(lock) {
+            try { writer?.close() } catch (_: Exception) {}
+            try { reader?.close() } catch (_: Exception) {}
+            try { clientSocket?.close() } catch (_: Exception) {}
+            try { serverSocket?.close() } catch (_: Exception) {}
+            writer = null
+            reader = null
+            clientSocket = null
+            serverSocket = null
         }
-        writer = null
-        reader = null
-        clientSocket = null
     }
     
     /**
      * 检查是否有客户端连接
      */
     fun hasClient(): Boolean {
-        return clientSocket?.isConnected == true && !clientSocket!!.isClosed
+        synchronized(lock) {
+            return clientSocket?.isConnected == true && clientSocket?.isClosed == false
+        }
     }
 }

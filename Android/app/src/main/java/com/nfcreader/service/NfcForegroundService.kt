@@ -5,7 +5,6 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
-import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.IBinder
@@ -15,7 +14,7 @@ import com.nfcreader.ui.MainActivity
 
 /**
  * NFC 前台服务
- * 确保 App 在后台时也能读取 NFC 卡片
+ * 保持进程存活，确保 App 切到后台后不被系统杀死
  */
 class NfcForegroundService : Service() {
 
@@ -27,20 +26,24 @@ class NfcForegroundService : Service() {
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
-        startForeground(NOTIFICATION_ID, createNotification())
+        startForeground(NOTIFICATION_ID, createNotification("NFC 读卡器运行中"))
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // START_STICKY: 被杀后系统自动重启
         return START_STICKY
     }
 
-    override fun onBind(intent: Intent?): IBinder? {
-        return null
-    }
+    override fun onBind(intent: Intent?): IBinder? = null
 
     /**
-     * 创建通知渠道（Android 8.0+）
+     * 更新通知文本（供 Activity 调用）
      */
+    fun updateNotification(text: String) {
+        val manager = getSystemService(NotificationManager::class.java)
+        manager.notify(NOTIFICATION_ID, createNotification(text))
+    }
+
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
@@ -51,29 +54,22 @@ class NfcForegroundService : Service() {
                 description = getString(R.string.notification_channel_desc)
                 setShowBadge(false)
             }
-            
-            val notificationManager = getSystemService(NotificationManager::class.java)
-            notificationManager.createNotificationChannel(channel)
+            getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
         }
     }
 
-    /**
-     * 创建前台通知
-     */
-    private fun createNotification(): Notification {
-        // 点击通知打开主界面
+    private fun createNotification(text: String): Notification {
         val pendingIntent = PendingIntent.getActivity(
-            this,
-            0,
+            this, 0,
             Intent(this, MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
+                flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
             },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        
+
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(getString(R.string.foreground_notification_title))
-            .setContentText(getString(R.string.foreground_notification_text))
+            .setContentText(text)
             .setSmallIcon(android.R.drawable.ic_menu_view)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
@@ -83,6 +79,11 @@ class NfcForegroundService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
-        stopForeground(STOP_FOREGROUND_REMOVE)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+        } else {
+            @Suppress("DEPRECATION")
+            stopForeground(true)
+        }
     }
 }
