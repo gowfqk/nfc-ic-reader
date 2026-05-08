@@ -53,6 +53,8 @@ class AdbHelper:
                 ['adb', 'version'],
                 capture_output=True,
                 text=True,
+                encoding='utf-8',
+                errors='replace',
                 timeout=5
             )
             return result.returncode == 0
@@ -67,6 +69,8 @@ class AdbHelper:
                 ['adb', 'devices'],
                 capture_output=True,
                 text=True,
+                encoding='utf-8',
+                errors='replace',
                 timeout=10
             )
             
@@ -91,6 +95,8 @@ class AdbHelper:
                 ['adb', 'forward', f'tcp:{local_port}', f'tcp:{remote_port}'],
                 capture_output=True,
                 text=True,
+                encoding='utf-8',
+                errors='replace',
                 timeout=10
             )
             return result.returncode == 0
@@ -105,6 +111,8 @@ class AdbHelper:
                 ['adb', 'forward', '--remove', f'tcp:{local_port}'],
                 capture_output=True,
                 text=True,
+                encoding='utf-8',
+                errors='replace',
                 timeout=5
             )
             return result.returncode == 0
@@ -119,6 +127,8 @@ class AdbHelper:
                 ['adb', 'connect', f'{ip}:{port}'],
                 capture_output=True,
                 text=True,
+                encoding='utf-8',
+                errors='replace',
                 timeout=10
             )
             return result.returncode == 0 and 'connected' in result.stdout.lower()
@@ -133,6 +143,8 @@ class AdbHelper:
                 ['adb', 'disconnect', f'{ip}:{port}'],
                 capture_output=True,
                 text=True,
+                encoding='utf-8',
+                errors='replace',
                 timeout=5
             )
             return result.returncode == 0
@@ -205,57 +217,58 @@ class TcpServer:
             self._cleanup()
     
     def _receive_data(self, client: socket.socket):
-        """接收客户端数据"""
+        """接收客户端数据（阻塞模式，关闭 socket 中断）"""
         buffer = ''
-        peer = client.getpeername()
-        print(f'[TcpServer] 开始接收数据 from {peer}')
         try:
-            while self.is_running:
-                try:
-                    # 用 select 检查可读，避免 Windows settimeout 10038 错误
-                    readable, _, _ = select.select([client], [], [], 5.0)
-                    if not readable:
-                        continue
-                    data = client.recv(1024)
-                    if not data:
-                        print(f'[TcpServer] 客户端 {peer} 断开（空数据）')
-                        break
-                    
-                    text = data.decode('utf-8')
-                    buffer += text
-                    
-                    while '\n' in buffer:
-                        line, buffer = buffer.split('\n', 1)
-                        if line.strip():
-                            print(f'[TcpServer] 收到: {line.strip()}')
-                            self.callback.on_data_received(line.strip())
-                            
-                except socket.timeout:
-                    continue
-                except OSError as e:
-                    print(f'[TcpServer] 接收 OSError: {e}')
-                    break
-                except Exception as e:
-                    print(f'[TcpServer] 接收异常: {type(e).__name__}: {e}')
-                    break
-        finally:
-            print(f'[TcpServer] 关闭客户端连接 {peer}')
+            peer = client.getpeername()
+            print(f'[TcpServer] 开始接收数据 from {peer}')
+        except Exception:
+            peer = '?'
+        while self.is_running:
             try:
-                client.close()
-            except Exception:
-                pass
-            with self._lock:
-                if self.client_socket is client:
-                    self.client_socket = None
-            if self.is_running:
-                self.callback.on_client_disconnected()
+                # 阻塞 recv，不用 settimeout 也不用 select
+                # 需要停止时由 stop() 关闭 socket 让 recv 抛异常退出
+                data = client.recv(1024)
+                if not data:
+                    print(f'[TcpServer] 客户端 {peer} 断开（空数据）')
+                    break
+                
+                text = data.decode('utf-8')
+                buffer += text
+                print(f'[TcpServer] 收到数据: {repr(text[:100])}')
+                
+                while '\n' in buffer:
+                    line, buffer = buffer.split('\n', 1)
+                    if line.strip():
+                        print(f'[TcpServer] 解析: {line.strip()}')
+                        self.callback.on_data_received(line.strip())
+                        
+            except Exception as e:
+                print(f'[TcpServer] recv 异常: {type(e).__name__}: {e}')
+                break
+        
+        try:
+            client.close()
+        except Exception:
+            pass
+        with self._lock:
+            if self.client_socket is client:
+                self.client_socket = None
+        print(f'[TcpServer] 客户端 {peer} 连接结束')
+        if self.is_running:
+            self.callback.on_client_disconnected()
     
     def stop(self):
         """停止服务器"""
         self.is_running = False
-        # 不在这里清理 socket，交给后台线程的 finally 处理
-        # 只关闭 server_socket 让 accept() 退出，client_socket 由 _receive_data 自行关闭
+        # 关闭所有 socket，让阻塞的 accept/recv 抛异常退出
         with self._lock:
+            if self.client_socket:
+                try:
+                    self.client_socket.close()
+                except Exception:
+                    pass
+                self.client_socket = None
             if self.server_socket:
                 try:
                     self.server_socket.close()
@@ -307,19 +320,7 @@ class TcpClient:
             try:
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
-                # 用 select 做连接超时，避免 Windows settimeout 问题
-                sock.setblocking(False)
-                try:
-                    sock.connect((self.host, self.port))
-                except BlockingIOError:
-                    # 非阻塞连接进行中，等待完成
-                    _, writable, _ = select.select([], [sock], [], 5.0)
-                    if not writable:
-                        raise socket.timeout('连接超时')
-                    err = sock.getsockopt(socket.SOL_SOCKET, socket.SO_ERROR)
-                    if err != 0:
-                        raise ConnectionRefusedError(f'连接被拒绝 (errno={err})')
-                sock.setblocking(True)
+                sock.connect((self.host, self.port))
                 with self._lock:
                     self.socket = sock
                 self.callback.on_connected()
@@ -339,36 +340,31 @@ class TcpClient:
                 time.sleep(2)
     
     def _receive_data(self, sock: socket.socket):
-        """接收数据"""
+        """接收数据（阻塞模式，关闭 socket 中断）"""
         buffer = ''
-        try:
-            while self.is_running:
-                try:
-                    # 用 select 检查可读，避免 Windows settimeout 10038 错误
-                    readable, _, _ = select.select([sock], [], [], 0.5)
-                    if not readable:
-                        continue
-                    data = sock.recv(1024).decode('utf-8')
-                    if not data:
-                        break
-                    
-                    buffer += data
-                    
-                    while '\n' in buffer:
-                        line, buffer = buffer.split('\n', 1)
-                        if line.strip():
-                            self.callback.on_data_received(line.strip())
-                            
-                except OSError:
-                    break
-        finally:
+        while self.is_running:
             try:
-                sock.close()
+                data = sock.recv(1024).decode('utf-8')
+                if not data:
+                    break
+                
+                buffer += data
+                
+                while '\n' in buffer:
+                    line, buffer = buffer.split('\n', 1)
+                    if line.strip():
+                        self.callback.on_data_received(line.strip())
+                        
             except Exception:
-                pass
-            with self._lock:
-                if self.socket is sock:
-                    self.socket = None
+                break
+        
+        try:
+            sock.close()
+        except Exception:
+            pass
+        with self._lock:
+            if self.socket is sock:
+                self.socket = None
     
     def disconnect(self):
         """断开连接"""
