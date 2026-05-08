@@ -57,8 +57,14 @@ class AdbHelper:
                 errors='replace',
                 timeout=5
             )
-            return result.returncode == 0
-        except (subprocess.SubprocessError, FileNotFoundError):
+            ok = result.returncode == 0
+            print(f'[ADB] version 检查: {"✓" if ok else "✗"} (rc={result.returncode})')
+            return ok
+        except FileNotFoundError:
+            print('[ADB] ✗ adb 命令未找到')
+            return False
+        except subprocess.SubprocessError as e:
+            print(f'[ADB] ✗ version 检查失败: {e}')
             return False
     
     @staticmethod
@@ -91,6 +97,7 @@ class AdbHelper:
     def forward(local_port: int, remote_port: int) -> bool:
         """创建端口转发"""
         try:
+            print(f'[ADB] 创建转发: tcp:{local_port} -> tcp:{remote_port}')
             result = subprocess.run(
                 ['adb', 'forward', f'tcp:{local_port}', f'tcp:{remote_port}'],
                 capture_output=True,
@@ -99,8 +106,17 @@ class AdbHelper:
                 errors='replace',
                 timeout=10
             )
-            return result.returncode == 0
-        except subprocess.SubprocessError:
+            ok = result.returncode == 0
+            print(f'[ADB] 转发结果: {"✓" if ok else "✗"} (rc={result.returncode})')
+            if not ok:
+                print(f'[ADB] stdout: {result.stdout.strip()}')
+                print(f'[ADB] stderr: {result.stderr.strip()}')
+            return ok
+        except FileNotFoundError:
+            print('[ADB] ✗ adb 命令未找到')
+            return False
+        except subprocess.SubprocessError as e:
+            print(f'[ADB] ✗ 转发失败: {e}')
             return False
     
     @staticmethod
@@ -175,45 +191,49 @@ class TcpServer:
     def _run_server(self):
         """服务器主循环"""
         try:
+            print(f'[TcpServer] 正在创建 socket...')
             self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            print(f'[TcpServer] 正在绑定 0.0.0.0:{self.port}...')
             self.server_socket.bind(('0.0.0.0', self.port))
             self.server_socket.listen(1)
             self.is_running = True
+            print(f'[TcpServer] ✓ 已启动，监听端口 {self.port}，等待手机连接...')
             
             self.callback.on_status_changed(f'等待手机连接... (监听 0.0.0.0:{self.port})')
-            print(f'[TcpServer] 已启动，监听端口 {self.port}')
             
             while self.is_running:
                 try:
                     self.server_socket.settimeout(1.0)
                     try:
                         client, addr = self.server_socket.accept()
+                        print(f'[TcpServer] ✓ 手机已连接! 来自 {addr[0]}:{addr[1]}')
                         client.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
-                        print(f'[TcpServer] 接受连接来自 {addr[0]}:{addr[1]}')
                         with self._lock:
                             self.client_socket = client
+                        print(f'[TcpServer] 正在通知 UI...')
                         self.callback.on_client_connected(addr[0])
+                        print(f'[TcpServer] 开始接收数据...')
                         self._receive_data(client)
                     except socket.timeout:
                         continue
                     except Exception as e:
                         if self.is_running:
-                            print(f'[TcpServer] accept 异常: {e}')
+                            print(f'[TcpServer] accept 异常: {type(e).__name__}: {e}')
                         
                 except Exception as e:
                     if self.is_running:
-                        print(f'[TcpServer] 连接错误: {e}')
+                        print(f'[TcpServer] 连接错误: {type(e).__name__}: {e}')
                         self.callback.on_error(f'连接错误: {e}')
         
         except OSError as e:
-            print(f'[TcpServer] 绑定失败: {e}')
+            print(f'[TcpServer] ✗ 绑定失败: {e}')
             self.callback.on_error(f'端口 {self.port} 绑定失败: {e}')
         except Exception as e:
-            print(f'[TcpServer] 服务器错误: {e}')
+            print(f'[TcpServer] ✗ 服务器错误: {type(e).__name__}: {e}')
             self.callback.on_error(f'服务器错误: {e}')
         finally:
-            print('[TcpServer] 已关闭')
+            print('[TcpServer] 服务器已关闭')
             self._cleanup()
     
     def _receive_data(self, client: socket.socket):
