@@ -1275,13 +1275,18 @@ class ClientCallback:
 
 def main():
     """主函数"""
-    app = QApplication(sys.argv)
-    app.setApplicationName('NFC 读卡器')
-    
-    window = MainWindow()
-    window.show()
-    
-    sys.exit(app.exec_())
+    try:
+        app = QApplication(sys.argv)
+        app.setApplicationName('NFC 读卡器')
+        
+        window = MainWindow()
+        window.show()
+        
+        sys.exit(app.exec_())
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        input(f"\n程序出错，按回车退出: {e}")
 
 
 if __name__ == '__main__':
