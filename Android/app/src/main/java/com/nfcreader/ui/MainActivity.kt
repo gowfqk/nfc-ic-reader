@@ -64,6 +64,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var inputModeGroup: RadioGroup
     private lateinit var radioHexInput: RadioButton
     private lateinit var radioDecInput: RadioButton
+    private lateinit var byteOrderGroup: RadioGroup
+    private lateinit var radioNormalOrder: RadioButton
+    private lateinit var radioReverseOrder: RadioButton
 
     // 网络连接组件
     private var tcpClient: TcpClient? = null
@@ -152,6 +155,9 @@ class MainActivity : AppCompatActivity() {
         inputModeGroup = findViewById(R.id.inputModeGroup)
         radioHexInput = findViewById(R.id.radioHexInput)
         radioDecInput = findViewById(R.id.radioDecInput)
+        byteOrderGroup = findViewById(R.id.byteOrderGroup)
+        radioNormalOrder = findViewById(R.id.radioNormalOrder)
+        radioReverseOrder = findViewById(R.id.radioReverseOrder)
     }
 
     private fun initNfc() {
@@ -274,6 +280,7 @@ class MainActivity : AppCompatActivity() {
 
             val hexUid: String
             val inputMode = if (radioHexInput.isChecked) "HEX" else "十进制"
+            val byteOrder = if (radioNormalOrder.isChecked) "正序" else "倒序"
 
             try {
                 if (radioHexInput.isChecked) {
@@ -283,14 +290,25 @@ class MainActivity : AppCompatActivity() {
                         Toast.makeText(this, "HEX 格式错误（应为 8 或 14 位）", Toast.LENGTH_SHORT).show()
                         return@setOnClickListener
                     }
-                    hexUid = input.uppercase()
+                    hexUid = if (radioNormalOrder.isChecked) {
+                        input.uppercase()
+                    } else {
+                        // 倒序输入：按字节反转
+                        input.chunked(2).reversed().joinToString("").uppercase()
+                    }
                 } else {
                     // 十进制输入模式，转换为 HEX
                     val decValue = input.toLong()
                     // 根据数值大小判断字节数
-                    val byteCount = if (decValue <= 0xFFFFFFFFL) 4 else 7 // 7字节最大是 7FFFFFFFFFF (2^56-1)
+                    val byteCount = if (decValue <= 0xFFFFFFFFL) 4 else 7
                     val hexLength = byteCount * 2
-                    hexUid = decValue.toString(16).uppercase().padStart(hexLength, '0')
+                    val normalHex = decValue.toString(16).uppercase().padStart(hexLength, '0')
+                    hexUid = if (radioNormalOrder.isChecked) {
+                        normalHex
+                    } else {
+                        // 倒序十进制：先转换为 HEX，再按字节反转
+                        normalHex.chunked(2).reversed().joinToString("")
+                    }
                 }
             } catch (e: NumberFormatException) {
                 Toast.makeText(this, "$inputMode 格式错误", Toast.LENGTH_SHORT).show()
@@ -301,10 +319,10 @@ class MainActivity : AppCompatActivity() {
             currentUidHex = hexUid
             val formatted = formatUid(hexUid, currentFormat)
             uidText.text = formatted
-            cardTypeText.text = "手动输入($inputMode)"
+            cardTypeText.text = "手动输入($inputMode-$byteOrder)"
             hintText.text = "已手动设置卡号"
             foregroundService?.updateNotification("手动设置: $formatted")
-            Toast.makeText(this, "卡号已设置 ($inputMode)", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "卡号已设置 ($inputMode-$byteOrder)", Toast.LENGTH_SHORT).show()
         }
 
         // 切换输入模式时更新提示和输入类型
@@ -316,6 +334,11 @@ class MainActivity : AppCompatActivity() {
                 manualUidInput.hint = "输入卡号，如 323574305"
                 manualUidInput.inputType = android.text.InputType.TYPE_CLASS_NUMBER
             }
+            manualUidInput.text?.clear()
+        }
+
+        // 切换字节序时清空输入
+        byteOrderGroup.setOnCheckedChangeListener { _, _ ->
             manualUidInput.text?.clear()
         }
     }
