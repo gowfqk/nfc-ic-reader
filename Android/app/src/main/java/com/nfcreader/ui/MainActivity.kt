@@ -3,15 +3,18 @@ package com.nfcreader.ui
 import android.app.PendingIntent
 import android.content.ClipData
 import android.content.ClipboardManager
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.SharedPreferences
+import android.content.ServiceConnection
 import android.graphics.drawable.GradientDrawable
 import android.nfc.NfcAdapter
 import android.nfc.Tag
 import android.os.Build
 import android.os.Bundle
+import android.os.IBinder
 import android.view.View
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
@@ -22,6 +25,7 @@ import com.nfcreader.util.TcpClient
 import com.nfcreader.util.TcpServer
 import com.google.android.material.chip.Chip
 import com.google.android.material.chip.ChipGroup
+import com.nfcreader.service.NfcForegroundService
 import org.json.JSONObject
 
 /**
@@ -55,10 +59,15 @@ class MainActivity : AppCompatActivity() {
     private lateinit var hintText: TextView
     private lateinit var formatChipGroup: ChipGroup
     private lateinit var copyButton: com.google.android.material.button.MaterialButton
+    private lateinit var manualUidInput: com.google.android.material.textfield.TextInputEditText
+    private lateinit var applyManualUidButton: com.google.android.material.button.MaterialButton
 
     // 网络连接组件
     private var tcpClient: TcpClient? = null
     private var tcpServer: TcpServer? = null
+
+    // 前台服务引用
+    private var foregroundService: NfcForegroundService? = null
 
     // 配置
     private lateinit var prefs: SharedPreferences
@@ -75,6 +84,17 @@ class MainActivity : AppCompatActivity() {
         private const val KEY_SERVER_PORT = "server_port"
         private const val KEY_ADB_PORT = "adb_port"
         private const val KEY_UID_FORMAT = "uid_format"
+    }
+
+    // 前台服务绑定
+    private val serviceConnection = object : ServiceConnection {
+        override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
+            val binder = service as NfcForegroundService.LocalBinder
+            foregroundService = binder.getService()
+        }
+        override fun onServiceDisconnected(name: ComponentName?) {
+            foregroundService = null
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -95,6 +115,13 @@ class MainActivity : AppCompatActivity() {
         }
 
         handleIntent(intent)
+
+        // 绑定前台服务
+        bindService(
+            Intent(this, NfcForegroundService::class.java),
+            serviceConnection,
+            Context.BIND_AUTO_CREATE
+        )
     }
 
     private fun initViews() {
@@ -117,6 +144,8 @@ class MainActivity : AppCompatActivity() {
         hintText = findViewById(R.id.hintText)
         formatChipGroup = findViewById(R.id.formatChipGroup)
         copyButton = findViewById(R.id.copyButton)
+        manualUidInput = findViewById(R.id.manualUidInput)
+        applyManualUidButton = findViewById(R.id.applyManualUidButton)
     }
 
     private fun initNfc() {
@@ -227,6 +256,29 @@ class MainActivity : AppCompatActivity() {
             } else {
                 Toast.makeText(this, "还没有读取到卡号", Toast.LENGTH_SHORT).show()
             }
+        }
+
+        // 手动应用卡号
+        applyManualUidButton.setOnClickListener {
+            val input = manualUidInput.text.toString().trim().uppercase()
+            if (input.isEmpty()) {
+                Toast.makeText(this, "请输入卡号", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            // 验证是否为有效 HEX（4字节=8位，7字节=14位）
+            val hexPattern = "^[0-9A-F]{8}$|^[0-9A-F]{14}$".toRegex()
+            if (!hexPattern.matches(input)) {
+                Toast.makeText(this, "卡号格式不正确（应为8位或14位HEX）", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            // 应用手动输入的卡号
+            currentUidHex = input
+            val formatted = formatUid(input, currentFormat)
+            uidText.text = formatted
+            cardTypeText.text = "手动输入"
+            hintText.text = "已手动设置卡号"
+            foregroundService?.updateNotification("手动设置: $formatted")
+            Toast.makeText(this, "卡号已设置", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -351,11 +403,15 @@ class MainActivity : AppCompatActivity() {
         val cardType = detectCardType(tag)
 
         currentUidHex = uidHex
+        val formattedUid = formatUid(uidHex, currentFormat)
 
         runOnUiThread {
-            uidText.text = formatUid(uidHex, currentFormat)
+            uidText.text = formattedUid
             cardTypeText.text = cardType
             hintText.text = "UID已读取"
+
+            // 更新通知显示
+            foregroundService?.updateNotification("已读卡: $formattedUid")
         }
 
         sendUid(uidHex, cardType)
@@ -480,5 +536,6 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         super.onDestroy()
         disconnect()
+        unbindService(serviceConnection)
     }
 }

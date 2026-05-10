@@ -6,6 +6,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
+import android.os.Binder
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
@@ -23,6 +24,13 @@ class NfcForegroundService : Service() {
         private const val CHANNEL_ID = "nfc_foreground_channel"
     }
 
+    // Binder for Activity binding
+    inner class LocalBinder : Binder() {
+        fun getService(): NfcForegroundService = this@NfcForegroundService
+    }
+
+    private val binder = LocalBinder()
+
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
@@ -34,7 +42,7 @@ class NfcForegroundService : Service() {
         return START_STICKY
     }
 
-    override fun onBind(intent: Intent?): IBinder? = null
+    override fun onBind(intent: Intent?): IBinder? = binder
 
     /**
      * 更新通知文本（供 Activity 调用）
