@@ -391,13 +391,45 @@
                     android:layout_marginTop="12dp"
                     android:background="#E0E0E0" />
 
-                <TextView
-                    android:layout_width="wrap_content"
+                <LinearLayout
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="12dp"
-                    android:text="手动输入卡号（HEX）"
-                    android:textColor="@color/text_secondary"
-                    android:textSize="13sp" />
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="手动输入卡号"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="13sp" />
+
+                    <RadioGroup
+                        android:id="@+id/inputModeGroup"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal">
+
+                        <com.google.android.material.radiobutton.MaterialRadioButton
+                            android:id="@+id/radioHexInput"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:checked="true"
+                            android:text="HEX"
+                            android:textSize="13sp" />
+
+                        <com.google.android.material.radiobutton.MaterialRadioButton
+                            android:id="@+id/radioDecInput"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="十进制"
+                            android:textSize="13sp" />
+
+                    </RadioGroup>
+
+                </LinearLayout>
 
                 <LinearLayout
                     android:layout_width="match_parent"

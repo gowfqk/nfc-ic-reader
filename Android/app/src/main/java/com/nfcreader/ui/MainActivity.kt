@@ -61,6 +61,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var copyButton: com.google.android.material.button.MaterialButton
     private lateinit var manualUidInput: com.google.android.material.textfield.TextInputEditText
     private lateinit var applyManualUidButton: com.google.android.material.button.MaterialButton
+    private lateinit var inputModeGroup: RadioGroup
+    private lateinit var radioHexInput: RadioButton
+    private lateinit var radioDecInput: RadioButton
 
     // 网络连接组件
     private var tcpClient: TcpClient? = null
@@ -146,6 +149,9 @@ class MainActivity : AppCompatActivity() {
         copyButton = findViewById(R.id.copyButton)
         manualUidInput = findViewById(R.id.manualUidInput)
         applyManualUidButton = findViewById(R.id.applyManualUidButton)
+        inputModeGroup = findViewById(R.id.inputModeGroup)
+        radioHexInput = findViewById(R.id.radioHexInput)
+        radioDecInput = findViewById(R.id.radioDecInput)
     }
 
     private fun initNfc() {
@@ -260,25 +266,57 @@ class MainActivity : AppCompatActivity() {
 
         // 手动应用卡号
         applyManualUidButton.setOnClickListener {
-            val input = manualUidInput.text.toString().trim().uppercase()
+            val input = manualUidInput.text.toString().trim()
             if (input.isEmpty()) {
                 Toast.makeText(this, "请输入卡号", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
-            // 验证是否为有效 HEX（4字节=8位，7字节=14位）
-            val hexPattern = "^[0-9A-F]{8}$|^[0-9A-F]{14}$".toRegex()
-            if (!hexPattern.matches(input)) {
-                Toast.makeText(this, "卡号格式不正确（应为8位或14位HEX）", Toast.LENGTH_SHORT).show()
+
+            val hexUid: String
+            val inputMode = if (radioHexInput.isChecked) "HEX" else "十进制"
+
+            try {
+                if (radioHexInput.isChecked) {
+                    // HEX 输入模式
+                    val hexPattern = "^[0-9A-Fa-f]{8}$|^[0-9A-Fa-f]{14}$".toRegex()
+                    if (!hexPattern.matches(input)) {
+                        Toast.makeText(this, "HEX 格式错误（应为 8 或 14 位）", Toast.LENGTH_SHORT).show()
+                        return@setOnClickListener
+                    }
+                    hexUid = input.uppercase()
+                } else {
+                    // 十进制输入模式，转换为 HEX
+                    val decValue = input.toLong()
+                    // 根据数值大小判断字节数
+                    val byteCount = if (decValue <= 0xFFFFFFFFL) 4 else 7 // 7字节最大是 7FFFFFFFFFF (2^56-1)
+                    val hexLength = byteCount * 2
+                    hexUid = decValue.toString(16).uppercase().padStart(hexLength, '0')
+                }
+            } catch (e: NumberFormatException) {
+                Toast.makeText(this, "$inputMode 格式错误", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
-            // 应用手动输入的卡号
-            currentUidHex = input
-            val formatted = formatUid(input, currentFormat)
+
+            // 应用卡号
+            currentUidHex = hexUid
+            val formatted = formatUid(hexUid, currentFormat)
             uidText.text = formatted
-            cardTypeText.text = "手动输入"
+            cardTypeText.text = "手动输入($inputMode)"
             hintText.text = "已手动设置卡号"
             foregroundService?.updateNotification("手动设置: $formatted")
-            Toast.makeText(this, "卡号已设置", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "卡号已设置 ($inputMode)", Toast.LENGTH_SHORT).show()
+        }
+
+        // 切换输入模式时更新提示和输入类型
+        inputModeGroup.setOnCheckedChangeListener { _, _ ->
+            if (radioHexInput.isChecked) {
+                manualUidInput.hint = "输入卡号，如 C0DCAD01"
+                manualUidInput.inputType = android.text.InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS
+            } else {
+                manualUidInput.hint = "输入卡号，如 323574305"
+                manualUidInput.inputType = android.text.InputType.TYPE_CLASS_NUMBER
+            }
+            manualUidInput.text?.clear()
         }
     }
 
