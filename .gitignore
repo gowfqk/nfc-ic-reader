@@ -6,3 +6,7 @@ build/
 .gradle/
 local.properties
 *.apk
+.idea/
+*.iml
+.DS_Store
+Thumbs.db
