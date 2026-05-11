@@ -189,20 +189,7 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
      * Reader Mode 回调 - 支持后台读卡
      */
     override fun onTagDiscovered(tag: Tag) {
-        // 从 Tag 对象提取 UID 和卡片类型
-        val uidBytes = tag.id
-        val uidHex = uidBytes.joinToString("") { "%02X".format(it) }
-        
-        // 提取卡片技术类型
-        val techList = tag.techList
-        val cardType = techList.firstOrNull()
-            ?.substringAfterLast(".")
-            ?.replace("Nfc", "NFC-")
-            ?: "Unknown"
-
-        runOnUiThread {
-            handleTagData(uidHex, cardType)
-        }
+        processTag(tag)
     }
 
     private fun loadSettings() {
