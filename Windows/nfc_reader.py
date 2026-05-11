@@ -49,7 +49,7 @@ def resource_path(relative_path):
 DEFAULT_WIFI_PORT = 8888
 DEFAULT_ADB_LOCAL_PORT = 8888
 DEFAULT_OUTPUT_FILE = "nfc_output.txt"
-APP_VERSION = "1.2.0"
+APP_VERSION = "1.3.0"
 
 
 class AdbHelper:
