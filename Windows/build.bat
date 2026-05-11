@@ -22,7 +22,7 @@ echo.
 REM 使用 --collect-all 确保所有依赖都被打包
 pyinstaller --onefile --noconsole^
     --name "NFC读卡器"^
-    --icon=icon.jpg^
+    --icon=icon.ico^
     --collect-all keyboard^
     --collect-all PyQt5^
     --hidden-import PyQt5.QtCore^
