@@ -10,7 +10,7 @@ a = Analysis(
     ['nfc_reader.py'],
     pathex=[],
     binaries=[],
-    datas=[],
+    datas=[('icon.ico', '.')],
     hiddenimports=[
         'PyQt5.QtCore',
         'PyQt5.QtGui', 

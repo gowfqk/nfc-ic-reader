@@ -36,6 +36,15 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import Qt, QTimer, QSettings, QObject, pyqtSignal
 from PyQt5.QtGui import QIcon, QColor, QPalette
 
+# 资源路径（兼容 PyInstaller 打包和开发环境）
+def resource_path(relative_path):
+    """获取资源文件的绝对路径"""
+    try:
+        base_path = sys._MEIPASS
+    except AttributeError:
+        base_path = os.path.abspath('.')
+    return os.path.join(base_path, relative_path)
+
 # 配置常量
 DEFAULT_WIFI_PORT = 8888
 DEFAULT_ADB_LOCAL_PORT = 8888
@@ -752,6 +761,10 @@ class MainWindow(QMainWindow):
         self.eq.register('connected', self.on_connected)
         self.eq.register('disconnected', self.on_disconnected)
         
+        # 设置窗口图标
+        self.app_icon = QIcon(resource_path('icon.ico'))
+        self.setWindowIcon(self.app_icon)
+
         # 加载设置
         self.app_settings = QSettings('NFCReader', 'NFCReader')
         
@@ -976,9 +989,7 @@ class MainWindow(QMainWindow):
         self.tray_icon = QSystemTrayIcon(self)
         self.tray_icon.setContextMenu(menu)
         self.tray_icon.setToolTip('NFC 读卡器')
-        self.tray_icon.setIcon(QApplication.style().standardIcon(
-            QApplication.style().SP_ComputerIcon
-        ))
+        self.tray_icon.setIcon(self.app_icon)
         self.tray_icon.activated.connect(self.on_tray_activated)
         
         self.blink_timer = QTimer()
@@ -994,9 +1005,7 @@ class MainWindow(QMainWindow):
         self.show()
         self.setWindowState(Qt.WindowNoState)
         self.blink_timer.stop()
-        self.tray_icon.setIcon(QApplication.style().standardIcon(
-            QApplication.style().SP_ComputerIcon
-        ))
+        self.tray_icon.setIcon(self.app_icon)
     
     def start_blink(self):
         """开始闪烁"""
@@ -1007,9 +1016,7 @@ class MainWindow(QMainWindow):
     def stop_blink(self):
         """停止闪烁"""
         self.blink_timer.stop()
-        self.tray_icon.setIcon(QApplication.style().standardIcon(
-            QApplication.style().SP_ComputerIcon
-        ))
+        self.tray_icon.setIcon(self.app_icon)
     
     def toggle_blink(self):
         """切换闪烁"""
@@ -1019,9 +1026,7 @@ class MainWindow(QMainWindow):
                 QApplication.style().SP_MessageBoxWarning
             ))
         else:
-            self.tray_icon.setIcon(QApplication.style().standardIcon(
-                QApplication.style().SP_ComputerIcon
-            ))
+            self.tray_icon.setIcon(self.app_icon)
     
     def on_mode_changed(self):
         """模式切换"""

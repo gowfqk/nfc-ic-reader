@@ -24,6 +24,7 @@ echo.
 pyinstaller --onefile --noconsole ^
     --name "NFC读卡器" ^
     --icon=icon.ico ^
+    --add-data "icon.ico;." ^
     --hidden-import keyboard ^
     --hidden-import PyQt5.sip ^
     --hidden-import PyQt5.QtCore ^
