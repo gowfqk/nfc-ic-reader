@@ -12,6 +12,15 @@ import android.content.ServiceConnection
 import android.graphics.drawable.GradientDrawable
 import android.nfc.NfcAdapter
 import android.nfc.Tag
+import android.nfc.tech.IsoDep
+import android.nfc.tech.MifareClassic
+import android.nfc.tech.MifareUltralight
+import android.nfc.tech.NfcA
+import android.nfc.tech.NfcB
+import android.nfc.tech.NfcF
+import android.nfc.tech.NfcV
+import android.nfc.tech.Ndef
+import android.nfc.tech.NdefFormatable
 import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
@@ -30,8 +39,9 @@ import org.json.JSONObject
 /**
  * NFC 读卡器主界面
  * 支持 WiFi 和 ADB 两种连接模式
+ * Reader Mode 支持后台读卡
  */
-class MainActivity : AppCompatActivity() {
+class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
 
     // NFC 相关
     private var nfcAdapter: NfcAdapter? = null
@@ -172,27 +182,27 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        updateNfcStatus(true, "NFC已启用")
+        updateNfcStatus(true, "NFC已启用 (支持后台)")
+    }
 
-        // PendingIntent for foreground dispatch
-        val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            PendingIntent.FLAG_MUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        } else {
-            PendingIntent.FLAG_UPDATE_CURRENT
-        }
-        pendingIntent = PendingIntent.getActivity(
-            this, 0,
-            Intent(this, javaClass).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
-            flags
-        )
+    /**
+     * Reader Mode 回调 - 支持后台读卡
+     */
+    override fun onTagDiscovered(tag: Tag) {
+        // 从 Tag 对象提取 UID 和卡片类型
+        val uidBytes = tag.id
+        val uidHex = uidBytes.joinToString("") { "%02X".format(it) }
+        
+        // 提取卡片技术类型
+        val techList = tag.techList
+        val cardType = techList.firstOrNull()
+            ?.substringAfterLast(".")
+            ?.replace("Nfc", "NFC-")
+            ?: "Unknown"
 
-        // Intent filters
-        val ndefFilter = IntentFilter(NfcAdapter.ACTION_NDEF_DISCOVERED).apply {
-            try { addDataType("*/*") } catch (_: IntentFilter.MalformedMimeTypeException) {}
+        runOnUiThread {
+            handleTagData(uidHex, cardType)
         }
-        val tagFilter = IntentFilter(NfcAdapter.ACTION_TAG_DISCOVERED)
-        val techFilter = IntentFilter(NfcAdapter.ACTION_TECH_DISCOVERED)
-        intentFilters = arrayOf(ndefFilter, tagFilter, techFilter)
     }
 
     private fun loadSettings() {
@@ -579,21 +589,26 @@ class MainActivity : AppCompatActivity() {
         }.start()
     }
 
-    // ── NFC 前台调度生命周期 ──────────────────────────
+    // ── NFC Reader Mode 生命周期（支持后台读卡）──────────────────────────
 
     override fun onResume() {
         super.onResume()
-        // 只有 NFC 启用时才设置前台调度
+        // 使用 Reader Mode 替代 Foreground Dispatch，支持后台读卡
         if (nfcAdapter?.isEnabled == true) {
-            nfcAdapter?.enableForegroundDispatch(this, pendingIntent, intentFilters, null)
+            val flags = NfcAdapter.FLAG_READER_NFC_A or
+                        NfcAdapter.FLAG_READER_NFC_B or
+                        NfcAdapter.FLAG_READER_NFC_F or
+                        NfcAdapter.FLAG_READER_NFC_V or
+                        NfcAdapter.FLAG_READER_NFC_BARCODE or
+                        NfcAdapter.FLAG_READER_SKIP_NDEF_CHECK
+            nfcAdapter?.enableReaderMode(this, this, flags, null)
         }
     }
 
     override fun onPause() {
         super.onPause()
-        // 只有 NFC 启用时才禁用前台调度
         if (nfcAdapter?.isEnabled == true) {
-            nfcAdapter?.disableForegroundDispatch(this)
+            nfcAdapter?.disableReaderMode(this)
         }
     }
 
