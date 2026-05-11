@@ -36,9 +36,90 @@ class NfcHookModule : IXposedHookLoadPackage {
         XposedBridge.log("[$TAG] Hooking NFC package: ${lpparam.packageName}")
 
         // 尝试多种 Hook 点，适配不同 ROM
+        hookScreenState(lpparam)          // 关键：解除息屏限制
         hookNfcDispatcher(lpparam)
         hookNfcService(lpparam)
         hookNfcTagDispatch(lpparam)
+    }
+
+    /**
+     * Hook 点 0：解除息屏限制
+     * 核心思路：Hook 系统 NFC 服务中的屏幕状态检查，让 NFC 在息屏时继续工作
+     */
+    private fun hookScreenState(lpparam: XC_LoadPackage.LoadPackageParam) {
+        val nfcServiceClazz = XposedHelpers.findClassIfExists(
+            "com.android.nfc.NfcService",
+            lpparam.classLoader
+        ) ?: return
+
+        // Hook 1: isScreenOn() / isScreenLocked() — 直接返回屏幕开启状态
+        hookMethodIfExists(nfcServiceClazz, "isScreenOn") { param ->
+            XposedBridge.log("[$TAG] NfcService.isScreenOn() hooked -> return true")
+            param.result = true
+        }
+
+        hookMethodIfExists(nfcServiceClazz, "isSecureScreenLocked") { param ->
+            XposedBridge.log("[$TAG] NfcService.isSecureScreenLocked() hooked -> return false")
+            param.result = false
+        }
+
+        // Hook 2: applyRouting() — 在应用路由前强制设置屏幕状态为 ON
+        hookMethodIfExists(nfcServiceClazz, "applyRouting", Boolean::class.java) { param ->
+            XposedBridge.log("[$TAG] NfcService.applyRouting() intercepted")
+            // 尝试修改内部 mScreenState 为 SCREEN_STATE_ON
+            try {
+                val nfcService = param.thisObject
+                // AOSP 中 SCREEN_STATE_ON = 1
+                XposedHelpers.setIntField(nfcService, "mScreenState", 1)
+                XposedBridge.log("[$TAG] Forced mScreenState = SCREEN_STATE_ON")
+            } catch (e: Exception) {
+                // 字段名可能不同，忽略
+            }
+        }
+
+        // Hook 3: 修改 mScreenState 字段的读取（部分 ROM 直接读字段）
+        try {
+            XposedHelpers.findAndHookMethod(
+                nfcServiceClazz,
+                "onScreenStateChanged",
+                Int::class.java,
+                object : XC_MethodHook() {
+                    override fun beforeHookedMethod(param: MethodHookParam) {
+                        // 拦截屏幕状态变化，强制保持 SCREEN_STATE_ON
+                        param.args[0] = 1 // SCREEN_STATE_ON
+                        XposedBridge.log("[$TAG] onScreenStateChanged intercepted -> forced ON")
+                    }
+                }
+            )
+            XposedBridge.log("[$TAG] Hooked NfcService.onScreenStateChanged")
+        } catch (e: Exception) {
+            // 方法不存在，忽略
+        }
+
+        // Hook 4: NfcDiscoveryParameters — 让息屏时的发现参数和亮屏一样
+        val discoveryClazz = XposedHelpers.findClassIfExists(
+            "com.android.nfc.NfcDiscoveryParameters",
+            lpparam.classLoader
+        )
+        discoveryClazz?.let {
+            hookMethodIfExists(it, "shouldEnableDiscovery") { param ->
+                XposedBridge.log("[$TAG] NfcDiscoveryParameters.shouldEnableDiscovery() -> true")
+                param.result = true
+            }
+        }
+
+        // Hook 5: DeviceHost / NativeNfcManager — 底层芯片接口
+        val deviceHostClazz = XposedHelpers.findClassIfExists(
+            "com.android.nfc.DeviceHost",
+            lpparam.classLoader
+        )
+        deviceHostClazz?.let {
+            hookMethodIfExists(it, "enableDiscovery", Object::class.java, Boolean::class.java) { param ->
+                XposedBridge.log("[$TAG] DeviceHost.enableDiscovery() intercepted")
+            }
+        }
+
+        XposedBridge.log("[$TAG] Screen-state hooks installed")
     }
 
     /**
