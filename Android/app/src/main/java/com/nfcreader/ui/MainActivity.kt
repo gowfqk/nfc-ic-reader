@@ -579,14 +579,18 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        // 进入前台时启用前台调度，拦截 NFC Intent
-        nfcAdapter?.enableForegroundDispatch(this, pendingIntent, intentFilters, null)
+        // 只有 NFC 启用时才设置前台调度
+        if (nfcAdapter?.isEnabled == true) {
+            nfcAdapter?.enableForegroundDispatch(this, pendingIntent, intentFilters, null)
+        }
     }
 
     override fun onPause() {
         super.onPause()
-        // 离开前台时禁用前台调度，恢复系统默认 NFC 分发
-        nfcAdapter?.disableForegroundDispatch(this)
+        // 只有 NFC 启用时才禁用前台调度
+        if (nfcAdapter?.isEnabled == true) {
+            nfcAdapter?.disableForegroundDispatch(this)
+        }
     }
 
     override fun onNewIntent(intent: Intent) {
