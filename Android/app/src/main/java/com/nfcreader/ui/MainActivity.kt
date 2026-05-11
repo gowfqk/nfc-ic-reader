@@ -8,6 +8,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.SharedPreferences
+import android.net.Uri
 import android.content.ServiceConnection
 import android.graphics.drawable.GradientDrawable
 import android.nfc.NfcAdapter
