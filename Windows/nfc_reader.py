@@ -5,7 +5,7 @@ NFC 读卡器 Windows 端
 模拟 HID 键盘输入，将 UID 直接输入到当前光标位置
 
 作者: NFC Reader Team
-版本: 2.0
+版本: 1.2.0
 """
 
 import sys
@@ -40,6 +40,7 @@ from PyQt5.QtGui import QIcon, QColor, QPalette
 DEFAULT_WIFI_PORT = 8888
 DEFAULT_ADB_LOCAL_PORT = 8888
 DEFAULT_OUTPUT_FILE = "nfc_output.txt"
+APP_VERSION = "1.2.0"
 
 
 class AdbHelper:
@@ -798,7 +799,7 @@ class MainWindow(QMainWindow):
     
     def init_ui(self):
         """初始化 UI"""
-        self.setWindowTitle('NFC 读卡器 - 键盘模拟模式')
+        self.setWindowTitle(f'NFC 读卡器 v{APP_VERSION} - 键盘模拟模式')
         self.setMinimumSize(500, 350)
         self.set_dark_theme()
         
@@ -1136,11 +1137,12 @@ class MainWindow(QMainWindow):
             json_data = json.loads(data)
             uid = json_data.get('uid', '')
             raw_uid = json_data.get('rawUid', None)  # 由 Android 格式化后发送时存在
+            android_format = json_data.get('format', 'unknown')
             card_type = json_data.get('type', 'unknown')
             
             # 显示用 raw_uid（如果有），更统一
             display_uid = raw_uid if raw_uid else uid
-            print(f'[process_received] uid={uid}, rawUid={raw_uid}, type={card_type}', flush=True)
+            print(f'[process_received] uid={uid}, rawUid={raw_uid}, format={android_format}, type={card_type}', flush=True)
             
             # 更新显示
             self.last_read_label.setText(f'上次读取: {display_uid} ({card_type})')
