@@ -40,6 +40,7 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
 
     // NFC 相关
     private var nfcAdapter: NfcAdapter? = null
+    private var nfcStateReceiver: android.content.BroadcastReceiver? = null
 
     // UI 组件
     private lateinit var nfcStatusIndicator: View
@@ -157,7 +158,14 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
 
     private fun initNfc() {
         nfcAdapter = NfcAdapter.getDefaultAdapter(this)
+        refreshNfcStatus()
+        registerNfcStateReceiver()
+    }
 
+    /**
+     * 刷新 NFC 状态显示
+     */
+    private fun refreshNfcStatus() {
         if (nfcAdapter == null) {
             updateNfcStatus(false, getString(R.string.nfc_not_available))
             return
@@ -169,6 +177,52 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
         }
 
         updateNfcStatus(true, "NFC已启用 (前台Reader Mode)")
+    }
+
+    /**
+     * 注册 NFC 状态变化广播接收器
+     * 监听系统 NFC 开关状态变化
+     */
+    private fun registerNfcStateReceiver() {
+        nfcStateReceiver = object : android.content.BroadcastReceiver() {
+            override fun onReceive(context: Context, intent: Intent) {
+                if (intent.action == NfcAdapter.ACTION_ADAPTER_STATE_CHANGED) {
+                    val state = intent.getIntExtra(NfcAdapter.EXTRA_ADAPTER_STATE, NfcAdapter.STATE_OFF)
+                    when (state) {
+                        NfcAdapter.STATE_ON -> {
+                            updateNfcStatus(true, "NFC已启用 (前台Reader Mode)")
+                        }
+                        NfcAdapter.STATE_OFF -> {
+                            updateNfcStatus(false, getString(R.string.nfc_disabled))
+                        }
+                        NfcAdapter.STATE_TURNING_ON -> {
+                            updateNfcStatus(false, "NFC正在开启...")
+                        }
+                        NfcAdapter.STATE_TURNING_OFF -> {
+                            updateNfcStatus(false, "NFC正在关闭...")
+                        }
+                    }
+                }
+            }
+        }
+        val filter = IntentFilter(NfcAdapter.ACTION_ADAPTER_STATE_CHANGED)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(nfcStateReceiver, filter, Context.RECEIVER_EXPORTED)
+        } else {
+            registerReceiver(nfcStateReceiver, filter)
+        }
+    }
+
+    /**
+     * 注销 NFC 状态广播接收器
+     */
+    private fun unregisterNfcStateReceiver() {
+        try {
+            nfcStateReceiver?.let { unregisterReceiver(it) }
+        } catch (_: IllegalArgumentException) {
+            // 可能未注册或已注销
+        }
+        nfcStateReceiver = null
     }
 
     /**
@@ -502,6 +556,8 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
 
     override fun onResume() {
         super.onResume()
+        // 每次回到前台刷新 NFC 状态（处理从设置页返回的情况）
+        refreshNfcStatus()
         if (nfcAdapter?.isEnabled == true) {
             val flags = NfcAdapter.FLAG_READER_NFC_A or
                         NfcAdapter.FLAG_READER_NFC_B or
@@ -528,5 +584,6 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
         }
         disconnect()
         unbindService(serviceConnection)
+        unregisterNfcStateReceiver()
     }
 }
