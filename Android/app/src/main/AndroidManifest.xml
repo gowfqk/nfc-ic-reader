@@ -40,29 +40,42 @@
             android:exported="true"
             android:launchMode="singleTop"
             android:theme="@style/Theme.NFCReader">
-            
-            <!-- NFC Intent Filter 配置 -->
-            <intent-filter>
-                <action android:name="android.nfc.action.NDEF_DISCOVERED" />
-            </intent-filter>
-            
-            <intent-filter>
-                <action android:name="android.nfc.action.TAG_DISCOVERED" />
-            </intent-filter>
-            
-            <intent-filter>
-                <action android:name="android.nfc.action.TECH_DISCOVERED" />
-            </intent-filter>
-            
-            <!-- 支持的 NFC 技术 -->
-            <meta-data
-                android:name="android.nfc.action.TECH_DISCOVERED"
-                android:resource="@xml/nfc_tech_filter" />
-            
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+        </activity>
+
+        <!-- 后台 NFC 接收 Activity（透明，处理完立即关闭） -->
+        <activity
+            android:name=".ui.NfcBackgroundActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:theme="@style/Theme.NFCReader.Transparent"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:finishOnTaskLaunch="true"
+            android:noHistory="true">
+
+            <!-- NFC Intent Filter：后台读卡入口 -->
+            <intent-filter>
+                <action android:name="android.nfc.action.NDEF_DISCOVERED" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+
+            <intent-filter>
+                <action android:name="android.nfc.action.TAG_DISCOVERED" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+
+            <intent-filter>
+                <action android:name="android.nfc.action.TECH_DISCOVERED" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+
+            <meta-data
+                android:name="android.nfc.action.TECH_DISCOVERED"
+                android:resource="@xml/nfc_tech_filter" />
         </activity>
 
         <!-- NFC 前台调度服务 -->
@@ -71,8 +84,9 @@
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="connectedDevice" />
-            
-            <service
+
+        <!-- NFC 卡模拟服务 -->
+        <service
             android:name=".service.NfcCardEmulationService"
             android:exported="true"
             android:permission="android.permission.BIND_NFC_SERVICE">

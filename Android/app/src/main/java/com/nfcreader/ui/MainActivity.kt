@@ -13,15 +13,6 @@ import android.content.ServiceConnection
 import android.graphics.drawable.GradientDrawable
 import android.nfc.NfcAdapter
 import android.nfc.Tag
-import android.nfc.tech.IsoDep
-import android.nfc.tech.MifareClassic
-import android.nfc.tech.MifareUltralight
-import android.nfc.tech.NfcA
-import android.nfc.tech.NfcB
-import android.nfc.tech.NfcF
-import android.nfc.tech.NfcV
-import android.nfc.tech.Ndef
-import android.nfc.tech.NdefFormatable
 import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
@@ -33,23 +24,22 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import com.nfcreader.R
 import com.nfcreader.service.NfcForegroundService
+import com.nfcreader.util.NfcConnectionManager
+import com.nfcreader.util.NfcTagHelper
 import com.nfcreader.util.TcpClient
 import com.nfcreader.util.TcpServer
 import com.google.android.material.chip.Chip
 import com.google.android.material.chip.ChipGroup
-import org.json.JSONObject
 
 /**
  * NFC 读卡器主界面
  * 支持 WiFi 和 ADB 两种连接模式
- * Reader Mode 支持后台读卡
+ * 前台使用 Reader Mode，后台通过 NfcBackgroundActivity + Intent Filter
  */
 class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
 
     // NFC 相关
     private var nfcAdapter: NfcAdapter? = null
-    private var pendingIntent: PendingIntent? = null
-    private var intentFilters: Array<IntentFilter>? = null
 
     // UI 组件
     private lateinit var nfcStatusIndicator: View
@@ -79,21 +69,16 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
     private lateinit var byteOrderGroup: RadioGroup
     private lateinit var radioNormalOrder: RadioButton
     private lateinit var radioReverseOrder: RadioButton
-
-    // 网络连接组件
-    private var tcpClient: TcpClient? = null
-    private var tcpServer: TcpServer? = null
+    private lateinit var setDefaultNfcButton: com.google.android.material.button.MaterialButton
 
     // 前台服务引用
     private var foregroundService: NfcForegroundService? = null
 
     // 配置
     private lateinit var prefs: SharedPreferences
-    @Volatile private var isConnected = false
 
     // UID 格式
-    private var currentUidHex: String = ""  // 保存原始 HEX，用于切换格式时重新格式化
-    private var currentFormat: String = "hex_with_space"
+    private var currentUidHex: String = ""
 
     companion object {
         private const val PREFS_NAME = "nfc_reader_prefs"
@@ -104,7 +89,6 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
         private const val KEY_UID_FORMAT = "uid_format"
     }
 
-    // 前台服务绑定
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
             val binder = service as NfcForegroundService.LocalBinder
@@ -124,10 +108,8 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
         loadSettings()
         setupListeners()
 
-        // 检查电池优化（必须关闭才能后台读卡）
         checkBatteryOptimization()
 
-        // 启动前台服务（保持后台 NFC 可用）
         val serviceIntent = Intent(this, NfcForegroundService::class.java)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             startForegroundService(serviceIntent)
@@ -135,9 +117,6 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
             startService(serviceIntent)
         }
 
-        handleIntent(intent)
-
-        // 绑定前台服务
         bindService(
             Intent(this, NfcForegroundService::class.java),
             serviceConnection,
@@ -173,6 +152,7 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
         byteOrderGroup = findViewById(R.id.byteOrderGroup)
         radioNormalOrder = findViewById(R.id.radioNormalOrder)
         radioReverseOrder = findViewById(R.id.radioReverseOrder)
+        setDefaultNfcButton = findViewById(R.id.setDefaultNfcButton)
     }
 
     private fun initNfc() {
@@ -188,12 +168,11 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
             return
         }
 
-        updateNfcStatus(true, "NFC已启用 (支持后台)")
+        updateNfcStatus(true, "NFC已启用 (前台Reader Mode)")
     }
 
     /**
      * 检查并请求电池优化白名单
-     * 后台读卡必须关闭电池优化
      */
     private fun checkBatteryOptimization() {
         val powerManager = getSystemService(POWER_SERVICE) as PowerManager
@@ -209,27 +188,17 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
     }
 
     /**
-     * 打开默认支付应用设置
-     * 设置为默认支付应用后可获得更高 NFC 权限
+     * 打开 NFC 设置，引导用户设为默认 NFC 处理应用
      */
-    private fun openDefaultPaymentSettings() {
-        Toast.makeText(this, "请在设置中将本应用设为默认支付应用", Toast.LENGTH_LONG).show()
+    private fun openDefaultNfcSettings() {
+        Toast.makeText(this, "请把本应用设为默认 NFC 处理应用", Toast.LENGTH_LONG).show()
         try {
-            val intent = Intent("android.settings.NFC_PAYMENT_SETTINGS")
-            startActivity(intent)
+            startActivity(Intent(Settings.ACTION_NFC_SETTINGS))
         } catch (e: Exception) {
-            // 某些系统没有这个设置界面，打开NFC设置
-            try {
-                startActivity(Intent(Settings.ACTION_NFC_SETTINGS))
-            } catch (e2: Exception) {
-                Toast.makeText(this, "无法打开设置，请手动设置", Toast.LENGTH_SHORT).show()
-            }
+            Toast.makeText(this, "无法打开 NFC 设置，请手动设置", Toast.LENGTH_SHORT).show()
         }
     }
 
-    /**
-     * Reader Mode 回调 - 支持后台读卡
-     */
     override fun onTagDiscovered(tag: Tag) {
         processTag(tag)
     }
@@ -254,9 +223,8 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
         portInput.setText(serverPort)
         adbPortInput.setText(adbPort)
 
-        // 恢复 UID 格式选择
-        currentFormat = prefs.getString(KEY_UID_FORMAT, "hex_with_space") ?: "hex_with_space"
-        restoreFormatChip(currentFormat)
+        NfcConnectionManager.currentFormat = prefs.getString(KEY_UID_FORMAT, "hex_with_space") ?: "hex_with_space"
+        restoreFormatChip(NfcConnectionManager.currentFormat)
     }
 
     private fun saveSettings() {
@@ -279,27 +247,24 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
         }
 
         connectButton.setOnClickListener {
-            if (isConnected) disconnect() else connect()
+            if (NfcConnectionManager.isConnected) disconnect() else connect()
         }
 
-        // UID 格式切换
         formatChipGroup.setOnCheckedStateChangeListener { _, _ ->
             val chipId = formatChipGroup.checkedChipId
             val newFormat = chipIdToFormat(chipId)
-            if (newFormat != currentFormat) {
-                currentFormat = newFormat
-                prefs.edit().putString(KEY_UID_FORMAT, currentFormat).apply()
-                // 重新格式化显示
+            if (newFormat != NfcConnectionManager.currentFormat) {
+                NfcConnectionManager.currentFormat = newFormat
+                prefs.edit().putString(KEY_UID_FORMAT, newFormat).apply()
                 if (currentUidHex.isNotEmpty()) {
-                    uidText.text = formatUid(currentUidHex, currentFormat)
+                    uidText.text = NfcTagHelper.formatUid(currentUidHex, newFormat)
                 }
             }
         }
 
-        // 复制卡号
         copyButton.setOnClickListener {
             if (currentUidHex.isNotEmpty()) {
-                val text = formatUid(currentUidHex, currentFormat)
+                val text = NfcTagHelper.formatUid(currentUidHex, NfcConnectionManager.currentFormat)
                 val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                 clipboard.setPrimaryClip(ClipData.newPlainText("UID", text))
                 Toast.makeText(this, "已复制: $text", Toast.LENGTH_SHORT).show()
@@ -308,7 +273,6 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
             }
         }
 
-        // 手动应用卡号
         applyManualUidButton.setOnClickListener {
             val input = manualUidInput.text.toString().trim()
             if (input.isEmpty()) {
@@ -322,7 +286,6 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
 
             try {
                 if (radioHexInput.isChecked) {
-                    // HEX 输入模式
                     val hexPattern = "^[0-9A-Fa-f]{8}$|^[0-9A-Fa-f]{14}$".toRegex()
                     if (!hexPattern.matches(input)) {
                         Toast.makeText(this, "HEX 格式错误（应为 8 或 14 位）", Toast.LENGTH_SHORT).show()
@@ -331,20 +294,16 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
                     hexUid = if (radioNormalOrder.isChecked) {
                         input.uppercase()
                     } else {
-                        // 倒序输入：按字节反转
                         input.chunked(2).reversed().joinToString("").uppercase()
                     }
                 } else {
-                    // 十进制输入模式，转换为 HEX
                     val decValue = input.toLong()
-                    // 根据数值大小判断字节数
                     val byteCount = if (decValue <= 0xFFFFFFFFL) 4 else 7
                     val hexLength = byteCount * 2
                     val normalHex = decValue.toString(16).uppercase().padStart(hexLength, '0')
                     hexUid = if (radioNormalOrder.isChecked) {
                         normalHex
                     } else {
-                        // 倒序十进制：先转换为 HEX，再按字节反转
                         normalHex.chunked(2).reversed().joinToString("")
                     }
                 }
@@ -353,9 +312,8 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
                 return@setOnClickListener
             }
 
-            // 应用卡号
             currentUidHex = hexUid
-            val formatted = formatUid(hexUid, currentFormat)
+            val formatted = NfcTagHelper.formatUid(hexUid, NfcConnectionManager.currentFormat)
             uidText.text = formatted
             cardTypeText.text = "手动输入($inputMode-$byteOrder)"
             hintText.text = "已手动设置卡号"
@@ -363,7 +321,6 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
             Toast.makeText(this, "卡号已设置 ($inputMode-$byteOrder)", Toast.LENGTH_SHORT).show()
         }
 
-        // 切换输入模式时更新提示和输入类型
         inputModeGroup.setOnCheckedChangeListener { _, _ ->
             if (radioHexInput.isChecked) {
                 manualUidInput.hint = "输入卡号，如 C0DCAD01"
@@ -375,9 +332,12 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
             manualUidInput.text?.clear()
         }
 
-        // 切换字节序时清空输入
         byteOrderGroup.setOnCheckedChangeListener { _, _ ->
             manualUidInput.text?.clear()
+        }
+
+        setDefaultNfcButton.setOnClickListener {
+            openDefaultNfcSettings()
         }
     }
 
@@ -398,7 +358,7 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
     }
 
     private fun updateConnectionStatus(connected: Boolean, message: String) {
-        isConnected = connected
+        NfcConnectionManager.isConnected = connected
         connectionStatusText.text = message
         val color = if (connected) R.color.status_connected else R.color.status_disconnected
         setIndicatorColor(connectionStatusIndicator, color)
@@ -410,9 +370,6 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
         drawable?.setColor(ContextCompat.getColor(this, colorRes))
     }
 
-    /**
-     * 连接服务器或启动服务
-     */
     private fun connect() {
         saveSettings()
 
@@ -432,7 +389,7 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
 
             updateConnectionStatus(false, getString(R.string.status_connecting))
 
-            tcpClient = TcpClient(ip, port, object : TcpClient.ConnectionListener {
+            val client = TcpClient(ip, port, object : TcpClient.ConnectionListener {
                 override fun onConnected() {
                     runOnUiThread { updateConnectionStatus(true, "已连接到 $ip:$port") }
                 }
@@ -443,7 +400,9 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
                     runOnUiThread { updateConnectionStatus(false, "错误: $message") }
                 }
             })
-            tcpClient?.connect()
+            client.connect()
+            NfcConnectionManager.tcpClient = client
+            NfcConnectionManager.isWifiMode = true
 
         } else {
             val portStr = adbPortInput.text.toString().trim()
@@ -456,7 +415,7 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
 
             updateConnectionStatus(false, "正在启动服务器...")
 
-            tcpServer = TcpServer(port, object : TcpServer.ConnectionListener {
+            val server = TcpServer(port, object : TcpServer.ConnectionListener {
                 override fun onClientConnected(address: String) {
                     runOnUiThread { updateConnectionStatus(true, "客户端已连接 ($address)") }
                 }
@@ -467,98 +426,37 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
                     runOnUiThread { updateConnectionStatus(false, "服务器错误: $message") }
                 }
             })
-            tcpServer?.start()
+            server.start()
+            NfcConnectionManager.tcpServer = server
+            NfcConnectionManager.isWifiMode = false
         }
     }
 
     private fun disconnect() {
-        tcpClient?.disconnect()
-        tcpClient = null
-        tcpServer?.stop()
-        tcpServer = null
+        NfcConnectionManager.tcpClient?.disconnect()
+        NfcConnectionManager.tcpClient = null
+        NfcConnectionManager.tcpServer?.stop()
+        NfcConnectionManager.tcpServer = null
         updateConnectionStatus(false, getString(R.string.status_disconnected))
     }
 
-    private fun handleIntent(intent: Intent?) {
-        if (intent == null) return
-        when (intent.action) {
-            NfcAdapter.ACTION_TAG_DISCOVERED,
-            NfcAdapter.ACTION_TECH_DISCOVERED,
-            NfcAdapter.ACTION_NDEF_DISCOVERED -> {
-                val tag: Tag? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    intent.getParcelableExtra(NfcAdapter.EXTRA_TAG, Tag::class.java)
-                } else {
-                    @Suppress("DEPRECATION")
-                    intent.getParcelableExtra(NfcAdapter.EXTRA_TAG)
-                }
-                tag?.let { processTag(it) }
-            }
-        }
-    }
-
     private fun processTag(tag: Tag) {
-        val uid = tag.id
-        val uidHex = uid.toHexString().uppercase()
-        val cardType = detectCardType(tag)
+        val uidHex = NfcTagHelper.getUidHex(tag)
+        val cardType = NfcTagHelper.detectCardType(tag)
 
         currentUidHex = uidHex
-        val formattedUid = formatUid(uidHex, currentFormat)
+        val formattedUid = NfcTagHelper.formatUid(uidHex, NfcConnectionManager.currentFormat)
 
         runOnUiThread {
             uidText.text = formattedUid
             cardTypeText.text = cardType
             hintText.text = "UID已读取"
-
-            // 更新通知显示
             foregroundService?.updateNotification("已读卡: $formattedUid")
         }
 
         sendUid(uidHex, cardType)
     }
 
-    private fun detectCardType(tag: Tag): String {
-        val techList = tag.techList
-        return when {
-            techList.any { it == "android.nfc.tech.MifareClassic" } -> "Mifare Classic"
-            techList.any { it == "android.nfc.tech.MifareUltralight" } -> "Mifare Ultralight"
-            techList.any { it == "android.nfc.tech.NfcA" } -> "NFC-A"
-            techList.any { it == "android.nfc.tech.NfcB" } -> "NFC-B"
-            techList.any { it == "android.nfc.tech.NfcF" } -> "NFC-F"
-            techList.any { it == "android.nfc.tech.NfcV" } -> "NFC-V"
-            techList.any { it == "android.nfc.tech.IsoDep" } -> "ISO-DEP"
-            techList.any { it == "android.nfc.tech.Ndef" } -> "NDEF"
-            else -> "Unknown"
-        }
-    }
-
-    private fun ByteArray.toHexString(): String = joinToString("") { "%02X".format(it) }
-
-    /** 将 HEX UID 按指定格式输出 */
-    private fun formatUid(hex: String, format: String): String {
-        return when (format) {
-            "hex_with_space" -> hex.chunked(2).joinToString(" ")
-            "hex_no_space" -> hex
-            "hex_reverse" -> hex.chunked(2).reversed().joinToString("")
-            "decimal" -> {
-                val width = if (hex.length <= 8) 10 else 17
-                hex.toLong(16).toString().padStart(width, '0')
-            }
-            "decimal_reverse" -> {
-                val reversed = hex.chunked(2).reversed().joinToString("")
-                val width = if (hex.length <= 8) 10 else 17
-                reversed.toLong(16).toString().padStart(width, '0')
-            }
-            "wahid" -> {
-                // WAHID = 倒序十进制
-                val reversed = hex.chunked(2).reversed().joinToString("")
-                val width = if (hex.length <= 8) 10 else 17
-                reversed.toLong(16).toString().padStart(width, '0')
-            }
-            else -> hex.chunked(2).joinToString(" ")
-        }
-    }
-
-    /** Chip ID -> 格式 key */
     private fun chipIdToFormat(chipId: Int): String = when (chipId) {
         R.id.chipHexSpace -> "hex_with_space"
         R.id.chipHexNoSpace -> "hex_no_space"
@@ -569,7 +467,6 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
         else -> "hex_with_space"
     }
 
-    /** 格式 key -> Chip ID */
     private fun formatToChipId(format: String): Int = when (format) {
         "hex_with_space" -> R.id.chipHexSpace
         "hex_no_space" -> R.id.chipHexNoSpace
@@ -580,60 +477,40 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
         else -> R.id.chipHexSpace
     }
 
-    /** 恢复上次的格式选择 */
     private fun restoreFormatChip(format: String) {
         formatChipGroup.check(formatToChipId(format))
     }
 
     private fun sendUid(uid: String, cardType: String) {
-        if (!isConnected) {
+        if (!NfcConnectionManager.isConnected) {
             runOnUiThread { hintText.text = getString(R.string.send_failed) }
             return
         }
 
-        // 使用手机端选中的格式进行格式化后发送
-        val formattedUid = formatUid(uid, currentFormat)
+        val formattedUid = NfcTagHelper.formatUid(uid, NfcConnectionManager.currentFormat)
+        val message = NfcTagHelper.createMessage(formattedUid, uid, NfcConnectionManager.currentFormat, cardType)
 
-        val json = JSONObject().apply {
-            put("uid", formattedUid)          // 格式化后的 UID
-            put("rawUid", uid)                // 原始 HEX UID（供 Windows 内部使用）
-            put("format", currentFormat)      // 当前选中的格式
-            put("type", cardType.lowercase().replace(" ", "_"))
-            put("timestamp", System.currentTimeMillis() / 1000)
-        }
-        val message = json.toString() + "\n"
-
-        // 网络操作必须在子线程，否则 Android 抛 NetworkOnMainThreadException
         Thread {
-            try {
-                if (radioWifi.isChecked) {
-                    tcpClient?.send(message)
-                } else {
-                    tcpServer?.broadcast(message)
-                }
-                runOnUiThread { hintText.text = getString(R.string.uid_sent) }
-            } catch (e: Exception) {
-                runOnUiThread { hintText.text = "发送失败: ${e.message}" }
+            val ok = NfcConnectionManager.send(message)
+            runOnUiThread {
+                hintText.text = if (ok) getString(R.string.uid_sent) else getString(R.string.send_failed)
             }
         }.start()
     }
 
-    // ── NFC Reader Mode 生命周期（支持后台读卡）──────────────────────────
+    // ── NFC Reader Mode 生命周期（仅前台）──────────────────────────
 
     override fun onResume() {
         super.onResume()
-        // 使用 Reader Mode 替代 Foreground Dispatch，支持后台读卡
         if (nfcAdapter?.isEnabled == true) {
-            // Reader Mode 标志：支持所有主流卡类型，跳过 NDEF
             val flags = NfcAdapter.FLAG_READER_NFC_A or
                         NfcAdapter.FLAG_READER_NFC_B or
                         NfcAdapter.FLAG_READER_NFC_F or
                         NfcAdapter.FLAG_READER_NFC_V or
                         NfcAdapter.FLAG_READER_NFC_BARCODE or
                         NfcAdapter.FLAG_READER_SKIP_NDEF_CHECK
-            // 设置读卡延迟（可选，减少电量消耗）
             val extras = Bundle().apply {
-                putInt(NfcAdapter.EXTRA_READER_PRESENCE_CHECK_DELAY, 300)  // 300ms 间隔
+                putInt(NfcAdapter.EXTRA_READER_PRESENCE_CHECK_DELAY, 300)
             }
             nfcAdapter?.enableReaderMode(this, this, flags, extras)
         }
@@ -641,19 +518,11 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
 
     override fun onPause() {
         super.onPause()
-        // 注意：切后台时不立即禁用 Reader Mode
-        // 前台服务 + 唤醒锁保持进程存活，继续支持后台读卡
-        // 仅在 Activity 销毁时彻底禁用
-    }
-
-    override fun onNewIntent(intent: Intent) {
-        super.onNewIntent(intent)
-        handleIntent(intent)
+        // 切后台时 Reader Mode 自动失效，由 NfcBackgroundActivity 的 Intent Filter 接管
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        // 彻底销毁时才禁用 Reader Mode
         if (nfcAdapter?.isEnabled == true) {
             nfcAdapter?.disableReaderMode(this)
         }

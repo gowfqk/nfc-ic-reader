@@ -49,13 +49,24 @@
 
                     <TextView
                         android:id="@+id/nfcStatusText"
-                        android:layout_width="wrap_content"
+                        android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_marginStart="8dp"
+                        android:layout_weight="1"
                         android:textColor="@color/text_primary"
                         android:textSize="16sp"
                         android:textStyle="bold"
                         tools:text="NFC已启用" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/setDefaultNfcButton"
+                        style="@style/Widget.MaterialComponents.Button.TextButton"
+                        android:layout_width="wrap_content"
+                        android:layout_height="36dp"
+                        android:text="设为默认"
+                        android:textSize="12sp"
+                        app:cornerRadius="8dp" />
+
                 </LinearLayout>
 
             </LinearLayout>

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string-array name="scope">
+        <!-- 系统 NFC 服务包名 -->
+        <item>com.android.nfc</item>
+        <!-- 三星 -->
+        <item>com.samsung.android.nfc</item>
+        <!-- 小米/红米 -->
+        <item>com.miui.nfc</item>
+        <!-- 华为 -->
+        <item>com.huawei.nfc</item>
+        <!-- OPPO/一加/realme -->
+        <item>com.coloros.nfc</item>
+        <item>com.oplus.nfc</item>
+        <!-- vivo/iQOO -->
+        <item>com.vivo.nfc</item>
+        <!-- 魅族 -->
+        <item>com.meizu.nfc</item>
+        <!-- Google Pixel -->
+        <item>com.google.android.nfc</item>
+    </string-array>
+</resources>

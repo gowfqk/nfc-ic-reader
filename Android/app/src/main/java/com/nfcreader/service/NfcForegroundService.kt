@@ -24,6 +24,13 @@ class NfcForegroundService : Service() {
         private const val NOTIFICATION_ID = 1001
         private const val CHANNEL_ID = "nfc_foreground_channel"
         private const val WAKE_LOCK_TAG = "NFCReader::WakeLock"
+
+        // 供外部（如 NfcBackgroundActivity）更新通知
+        private var instance: NfcForegroundService? = null
+
+        fun updateNotificationStatic(context: android.content.Context, text: String) {
+            instance?.updateNotification(text)
+        }
     }
 
     // Binder for Activity binding
@@ -37,6 +44,7 @@ class NfcForegroundService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        instance = this
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, createNotification("NFC 读卡器运行中"))
         
@@ -97,6 +105,7 @@ class NfcForegroundService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        instance = null
         // 释放唤醒锁
         if (wakeLock?.isHeld == true) {
             wakeLock?.release()

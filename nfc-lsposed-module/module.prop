@@ -1,0 +1,7 @@
+id=nfcreader-hook
+name=NFC Reader Hook
+version=v1.0
+versionCode=1
+author=nfcreader
+description=Hook NFC service to redirect all tag discoveries to NFC Reader app
+api=93
