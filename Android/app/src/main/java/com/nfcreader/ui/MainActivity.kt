@@ -552,8 +552,13 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
+        // 使用手机端选中的格式进行格式化后发送
+        val formattedUid = formatUid(uid, currentFormat)
+
         val json = JSONObject().apply {
-            put("uid", uid)
+            put("uid", formattedUid)          // 格式化后的 UID
+            put("rawUid", uid)                // 原始 HEX UID（供 Windows 内部使用）
+            put("format", currentFormat)      // 当前选中的格式
             put("type", cardType.lowercase().replace(" ", "_"))
             put("timestamp", System.currentTimeMillis() / 1000)
         }

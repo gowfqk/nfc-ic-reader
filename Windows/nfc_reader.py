@@ -1135,18 +1135,22 @@ class MainWindow(QMainWindow):
             print(f'[process_received] 收到数据: {data}', flush=True)
             json_data = json.loads(data)
             uid = json_data.get('uid', '')
+            raw_uid = json_data.get('rawUid', None)  # 由 Android 格式化后发送时存在
             card_type = json_data.get('type', 'unknown')
-            print(f'[process_received] uid={uid}, type={card_type}', flush=True)
+            
+            # 显示用 raw_uid（如果有），更统一
+            display_uid = raw_uid if raw_uid else uid
+            print(f'[process_received] uid={uid}, rawUid={raw_uid}, type={card_type}', flush=True)
             
             # 更新显示
-            self.last_read_label.setText(f'上次读取: {uid} ({card_type})')
-            self.status_bar.showMessage(f'读取到卡片: {uid}')
+            self.last_read_label.setText(f'上次读取: {display_uid} ({card_type})')
+            self.status_bar.showMessage(f'读取到卡片: {display_uid}')
             
-            # 模拟键盘输入
-            self.simulate_input(uid)
+            # 模拟键盘输入：如果有 rawUid 说明 uid 已由 Android 格式化，直接使用
+            self.simulate_input(uid, skip_format=(raw_uid is not None))
             
             # 文件输出（辅助）
-            self.write_to_file(uid)
+            self.write_to_file(display_uid, skip_format=(raw_uid is not None))
             
             # 托盘闪烁
             self.start_blink()
@@ -1158,13 +1162,17 @@ class MainWindow(QMainWindow):
         except Exception as e:
             print(f'[process_received] 异常: {type(e).__name__}: {e}', flush=True)
     
-    def simulate_input(self, uid: str):
+    def simulate_input(self, uid: str, skip_format: bool = False):
         """模拟键盘输入"""
         settings = self.get_settings()
         
         # 格式化 UID
-        formatted_uid = UidFormatter.get_formatted(uid, settings['output_format'])
-        print(f'[simulate_input] uid={uid}, format={settings["output_format"]}, formatted={formatted_uid}', flush=True)
+        if skip_format:
+            formatted_uid = uid  # 已由 Android 格式化，直接使用
+            print(f'[simulate_input] 使用 Android 格式化结果: {formatted_uid}', flush=True)
+        else:
+            formatted_uid = UidFormatter.get_formatted(uid, settings['output_format'])
+            print(f'[simulate_input] uid={uid}, format={settings["output_format"]}, formatted={formatted_uid}', flush=True)
         print(f'[simulate_input] keyboard_available={self.keyboard_sim.keyboard_available}', flush=True)
         
         # 前缀
@@ -1196,7 +1204,7 @@ class MainWindow(QMainWindow):
         if settings.get('auto_enter', False):
             self.keyboard_sim.type_enter()
     
-    def write_to_file(self, uid: str):
+    def write_to_file(self, uid: str, skip_format: bool = False):
         """写入文件（辅助功能），超过 10MB 自动轮转"""
         settings = self.get_settings()
         
@@ -1219,7 +1227,10 @@ class MainWindow(QMainWindow):
             except OSError:
                 pass
             
-            formatted_uid = UidFormatter.get_formatted(uid, settings.get('output_format', 'hex_no_space'))
+            if skip_format:
+                formatted_uid = uid  # 已由 Android 格式化，直接使用
+            else:
+                formatted_uid = UidFormatter.get_formatted(uid, settings.get('output_format', 'hex_no_space'))
             
             with open(output_file, 'a', encoding='utf-8') as f:
                 if settings.get('file_add_timestamp', True):
