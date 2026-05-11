@@ -548,6 +548,13 @@ class SettingsDialog(QDialog):
         format_layout.addWidget(self.format_combo)
         keyboard_layout.addLayout(format_layout)
         
+        # 格式来源选择
+        format_source_layout = QHBoxLayout()
+        self.use_android_format = QCheckBox('使用手机端格式设置（勾选则手机端选择的格式优先）')
+        self.use_android_format.setChecked(True)  # 默认使用手机端
+        format_source_layout.addWidget(self.use_android_format)
+        keyboard_layout.addLayout(format_source_layout)
+        
         # 前缀
         prefix_layout = QHBoxLayout()
         prefix_layout.addWidget(QLabel('前缀：'))
@@ -674,6 +681,9 @@ class SettingsDialog(QDialog):
         if suffix_type == 'custom':
             self.suffix_custom.setText(self.settings.get('suffix_custom', ''))
             self.suffix_custom.setVisible(True)
+        
+        # 格式来源
+        self.use_android_format.setChecked(self.settings.get('use_android_format', True))
     
     def on_prefix_changed(self, index):
         """前缀选择变化"""
@@ -724,6 +734,7 @@ class SettingsDialog(QDialog):
             'file_add_timestamp': self.file_timestamp_checkbox.isChecked(),
             'minimize_to_tray': self.minimize_to_tray_checkbox.isChecked(),
             'start_minimized': self.start_minimized_checkbox.isChecked(),
+            'use_android_format': self.use_android_format.isChecked(),
         }
 
 
@@ -790,6 +801,7 @@ class MainWindow(QMainWindow):
             'file_add_timestamp': self.app_settings.value('file_add_timestamp', True, type=bool),
             'minimize_to_tray': self.app_settings.value('minimize_to_tray', True, type=bool),
             'start_minimized': self.app_settings.value('start_minimized', False, type=bool),
+            'use_android_format': self.app_settings.value('use_android_format', True, type=bool),
         }
     
     def save_settings(self, settings: dict):
@@ -1140,19 +1152,38 @@ class MainWindow(QMainWindow):
             android_format = json_data.get('format', 'unknown')
             card_type = json_data.get('type', 'unknown')
             
+            # 获取当前设置
+            settings = self.get_settings()
+            use_android_format = settings.get('use_android_format', True)
+            
+            # 判断是否需要跳过格式化
+            # - 新 Android 客户端发送了 raw_uid，且用户勾选了「使用手机端格式」
+            skip_format = (raw_uid is not None) and use_android_format
+            
             # 显示用 raw_uid（如果有），更统一
             display_uid = raw_uid if raw_uid else uid
             print(f'[process_received] uid={uid}, rawUid={raw_uid}, format={android_format}, type={card_type}', flush=True)
+            print(f'[process_received] use_android_format={use_android_format}, skip_format={skip_format}', flush=True)
             
             # 更新显示
             self.last_read_label.setText(f'上次读取: {display_uid} ({card_type})')
             self.status_bar.showMessage(f'读取到卡片: {display_uid}')
             
-            # 模拟键盘输入：如果有 rawUid 说明 uid 已由 Android 格式化，直接使用
-            self.simulate_input(uid, skip_format=(raw_uid is not None))
+            # 模拟键盘输入
+            if skip_format:
+                # 使用 Android 格式化后的结果（uid 就是格式化后的）
+                self.simulate_input(uid, skip_format=True)
+            else:
+                # 使用 Windows 本地格式设置格式化 raw_uid（优先）或 uid
+                uid_to_format = raw_uid if raw_uid else uid
+                self.simulate_input(uid_to_format, skip_format=False)
             
             # 文件输出（辅助）
-            self.write_to_file(display_uid, skip_format=(raw_uid is not None))
+            if skip_format:
+                self.write_to_file(uid, skip_format=True)
+            else:
+                uid_to_format = raw_uid if raw_uid else uid
+                self.write_to_file(uid_to_format, skip_format=False)
             
             # 托盘闪烁
             self.start_blink()
