@@ -582,21 +582,27 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
         super.onResume()
         // 使用 Reader Mode 替代 Foreground Dispatch，支持后台读卡
         if (nfcAdapter?.isEnabled == true) {
+            // Reader Mode 标志：支持所有主流卡类型，跳过 NDEF，关闭系统声音
             val flags = NfcAdapter.FLAG_READER_NFC_A or
                         NfcAdapter.FLAG_READER_NFC_B or
                         NfcAdapter.FLAG_READER_NFC_F or
                         NfcAdapter.FLAG_READER_NFC_V or
                         NfcAdapter.FLAG_READER_NFC_BARCODE or
-                        NfcAdapter.FLAG_READER_SKIP_NDEF_CHECK
-            nfcAdapter?.enableReaderMode(this, this, flags, null)
+                        NfcAdapter.FLAG_READER_SKIP_NDEF_CHECK or
+                        NfcAdapter.FLAG_READER_NO_PLATFORM_SOUNDS
+            // 设置读卡延迟（可选，减少电量消耗）
+            val extras = Bundle().apply {
+                putInt(NfcAdapter.EXTRA_READER_PRESENCE_CHECK_DELAY, 500)  // 500ms 间隔
+            }
+            nfcAdapter?.enableReaderMode(this, this, flags, extras)
         }
     }
 
     override fun onPause() {
         super.onPause()
-        if (nfcAdapter?.isEnabled == true) {
-            nfcAdapter?.disableReaderMode(this)
-        }
+        // 注意：切后台时不立即禁用 Reader Mode
+        // 前台服务 + 唤醒锁保持进程存活，继续支持后台读卡
+        // 仅在 Activity 销毁时彻底禁用
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -606,6 +612,10 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
 
     override fun onDestroy() {
         super.onDestroy()
+        // 彻底销毁时才禁用 Reader Mode
+        if (nfcAdapter?.isEnabled == true) {
+            nfcAdapter?.disableReaderMode(this)
+        }
         disconnect()
         unbindService(serviceConnection)
     }

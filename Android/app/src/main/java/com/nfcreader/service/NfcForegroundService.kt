@@ -9,6 +9,7 @@ import android.content.Intent
 import android.os.Binder
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import com.nfcreader.R
 import com.nfcreader.ui.MainActivity
@@ -22,12 +23,15 @@ class NfcForegroundService : Service() {
     companion object {
         private const val NOTIFICATION_ID = 1001
         private const val CHANNEL_ID = "nfc_foreground_channel"
+        private const val WAKE_LOCK_TAG = "NFCReader::WakeLock"
     }
 
     // Binder for Activity binding
     inner class LocalBinder : Binder() {
         fun getService(): NfcForegroundService = this@NfcForegroundService
     }
+    
+    private var wakeLock: PowerManager.WakeLock? = null
 
     private val binder = LocalBinder()
 
@@ -35,6 +39,12 @@ class NfcForegroundService : Service() {
         super.onCreate()
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, createNotification("NFC 读卡器运行中"))
+        
+        // 获取唤醒锁，保持 CPU 运行（支持后台读卡）
+        val powerManager = getSystemService(POWER_SERVICE) as PowerManager
+        wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, WAKE_LOCK_TAG).apply {
+            acquire(12 * 60 * 60 * 1000L)  // 最长 12 小时
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -87,6 +97,10 @@ class NfcForegroundService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        // 释放唤醒锁
+        if (wakeLock?.isHeld == true) {
+            wakeLock?.release()
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             stopForeground(STOP_FOREGROUND_REMOVE)
         } else {
