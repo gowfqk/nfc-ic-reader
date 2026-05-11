@@ -24,6 +24,8 @@ import android.nfc.tech.NdefFormatable
 import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
+import android.os.PowerManager
+import android.provider.Settings
 import android.view.View
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
@@ -121,6 +123,9 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
         loadSettings()
         setupListeners()
 
+        // 检查电池优化（必须关闭才能后台读卡）
+        checkBatteryOptimization()
+
         // 启动前台服务（保持后台 NFC 可用）
         val serviceIntent = Intent(this, NfcForegroundService::class.java)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -183,6 +188,42 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
         }
 
         updateNfcStatus(true, "NFC已启用 (支持后台)")
+    }
+
+    /**
+     * 检查并请求电池优化白名单
+     * 后台读卡必须关闭电池优化
+     */
+    private fun checkBatteryOptimization() {
+        val powerManager = getSystemService(POWER_SERVICE) as PowerManager
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            if (!powerManager.isIgnoringBatteryOptimizations(packageName)) {
+                Toast.makeText(this, "请关闭电池优化以支持后台读卡", Toast.LENGTH_LONG).show()
+                val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                    data = Uri.parse("package:$packageName")
+                }
+                startActivity(intent)
+            }
+        }
+    }
+
+    /**
+     * 打开默认支付应用设置
+     * 设置为默认支付应用后可获得更高 NFC 权限
+     */
+    private fun openDefaultPaymentSettings() {
+        Toast.makeText(this, "请在设置中将本应用设为默认支付应用", Toast.LENGTH_LONG).show()
+        try {
+            val intent = Intent("android.settings.NFC_PAYMENT_SETTINGS")
+            startActivity(intent)
+        } catch (e: Exception) {
+            // 某些系统没有这个设置界面，打开NFC设置
+            try {
+                startActivity(Intent(Settings.ACTION_NFC_SETTINGS))
+            } catch (e2: Exception) {
+                Toast.makeText(this, "无法打开设置，请手动设置", Toast.LENGTH_SHORT).show()
+            }
+        }
     }
 
     /**
@@ -582,17 +623,16 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
         super.onResume()
         // 使用 Reader Mode 替代 Foreground Dispatch，支持后台读卡
         if (nfcAdapter?.isEnabled == true) {
-            // Reader Mode 标志：支持所有主流卡类型，跳过 NDEF，关闭系统声音
+            // Reader Mode 标志：支持所有主流卡类型，跳过 NDEF
             val flags = NfcAdapter.FLAG_READER_NFC_A or
                         NfcAdapter.FLAG_READER_NFC_B or
                         NfcAdapter.FLAG_READER_NFC_F or
                         NfcAdapter.FLAG_READER_NFC_V or
                         NfcAdapter.FLAG_READER_NFC_BARCODE or
-                        NfcAdapter.FLAG_READER_SKIP_NDEF_CHECK or
-                        NfcAdapter.FLAG_READER_NO_PLATFORM_SOUNDS
+                        NfcAdapter.FLAG_READER_SKIP_NDEF_CHECK
             // 设置读卡延迟（可选，减少电量消耗）
             val extras = Bundle().apply {
-                putInt(NfcAdapter.EXTRA_READER_PRESENCE_CHECK_DELAY, 500)  // 500ms 间隔
+                putInt(NfcAdapter.EXTRA_READER_PRESENCE_CHECK_DELAY, 300)  // 300ms 间隔
             }
             nfcAdapter?.enableReaderMode(this, this, flags, extras)
         }
