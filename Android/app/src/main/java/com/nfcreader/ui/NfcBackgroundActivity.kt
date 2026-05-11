@@ -1,12 +1,17 @@
 package com.nfcreader.ui
 
 import android.content.Intent
+import android.media.AudioManager
+import android.media.ToneGenerator
 import android.nfc.NfcAdapter
 import android.nfc.Tag
 import android.os.Build
 import android.os.Bundle
+import android.os.VibrationEffect
+import android.os.Vibrator
 import android.view.WindowManager
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import com.nfcreader.service.NfcForegroundService
 import com.nfcreader.util.NfcConnectionManager
 import com.nfcreader.util.NfcTagHelper
@@ -92,6 +97,9 @@ class NfcBackgroundActivity : AppCompatActivity() {
     private fun processTagData(uidHex: String, cardType: String) {
         val formattedUid = NfcTagHelper.formatUid(uidHex, NfcConnectionManager.currentFormat)
 
+        // 播放提示音 + 震动
+        playSuccessFeedback()
+
         // 通过 TCP 发送
         if (NfcConnectionManager.isConnected) {
             val message = NfcTagHelper.createMessage(
@@ -104,5 +112,29 @@ class NfcBackgroundActivity : AppCompatActivity() {
 
         // 更新前台服务通知
         NfcForegroundService.updateNotificationStatic(this, "后台读卡: $formattedUid")
+    }
+
+    /**
+     * 读卡成功反馈：提示音 + 短震动
+     */
+    private fun playSuccessFeedback() {
+        try {
+            // 提示音（系统确认音）
+            val toneGen = ToneGenerator(AudioManager.STREAM_NOTIFICATION, 100)
+            toneGen.startTone(ToneGenerator.TONE_PROP_ACK, 150)
+
+            // 短震动（需要权限 android.permission.VIBRATE）
+            val vibrator = ContextCompat.getSystemService(this, Vibrator::class.java)
+            vibrator?.let {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    it.vibrate(VibrationEffect.createOneShot(100, VibrationEffect.DEFAULT_AMPLITUDE))
+                } else {
+                    @Suppress("DEPRECATION")
+                    it.vibrate(100)
+                }
+            }
+        } catch (e: Exception) {
+            // 忽略音频/震动错误
+        }
     }
 }
