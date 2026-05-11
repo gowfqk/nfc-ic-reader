@@ -48,7 +48,7 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name='NFC读卡器',
+    name='NFCReader',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

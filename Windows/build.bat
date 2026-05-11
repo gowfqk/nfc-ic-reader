@@ -22,7 +22,7 @@ echo [1/3] 正在打包（单文件模式）...
 echo.
 
 pyinstaller --onefile --noconsole ^
-    --name "NFC读卡器" ^
+    --name "NFCReader" ^
     --icon=icon.ico ^
     --add-data "icon.ico;." ^
     --hidden-import keyboard ^
@@ -89,10 +89,10 @@ echo.
 echo [2/3] 打包完成
 echo.
 
-if exist "dist\NFC读卡器.exe" (
-    for %%A in ("dist\NFC读卡器.exe") do (
+if exist "dist\NFCReader.exe" (
+    for %%A in ("dist\NFCReader.exe") do (
         set /a sizeMB=%%~zA/1048576
-        echo 输出文件: dist\NFC读卡器.exe
+        echo 输出文件: dist\NFCReader.exe
         echo 文件大小: %%~zA 字节 (约 !sizeMB! MB)
     )
 ) else (
@@ -106,7 +106,7 @@ echo [3/3] 是否运行测试? (Y/N)
 set /p runtest=
 if /i "%runtest%"=="Y" (
     echo 启动程序...
-    start "" "dist\NFC读卡器.exe"
+    start "" "dist\NFCReader.exe"
 )
 
 echo.
