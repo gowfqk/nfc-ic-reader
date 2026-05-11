@@ -25,7 +25,6 @@ import com.nfcreader.util.TcpClient
 import com.nfcreader.util.TcpServer
 import com.google.android.material.chip.Chip
 import com.google.android.material.chip.ChipGroup
-import com.nfcreader.service.NfcForegroundService
 import org.json.JSONObject
 
 /**
