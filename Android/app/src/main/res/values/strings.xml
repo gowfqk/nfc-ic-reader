@@ -27,4 +27,5 @@
     <string name="notification_channel_desc">保持NFC后台读取服务</string>
     <string name="foreground_notification_title">NFC读卡器运行中</string>
     <string name="foreground_notification_text">点击可打开设置界面</string>
+    <string name="notification_action_stop">退出</string>
 </resources>

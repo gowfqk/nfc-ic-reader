@@ -583,7 +583,11 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
             nfcAdapter?.disableReaderMode(this)
         }
         disconnect()
-        unbindService(serviceConnection)
+        try {
+            unbindService(serviceConnection)
+        } catch (_: Exception) {}
         unregisterNfcStateReceiver()
+        // 停止前台服务，移除常驻通知
+        stopService(Intent(this, NfcForegroundService::class.java))
     }
 }

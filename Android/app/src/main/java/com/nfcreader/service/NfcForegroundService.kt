@@ -24,12 +24,17 @@ class NfcForegroundService : Service() {
         private const val NOTIFICATION_ID = 1001
         private const val CHANNEL_ID = "nfc_foreground_channel"
         private const val WAKE_LOCK_TAG = "NFCReader::WakeLock"
+        private const val ACTION_STOP = "com.nfcreader.ACTION_STOP_SERVICE"
 
         // 供外部（如 NfcBackgroundActivity）更新通知
         private var instance: NfcForegroundService? = null
 
         fun updateNotificationStatic(context: android.content.Context, text: String) {
             instance?.updateNotification(text)
+        }
+
+        fun stopService(context: android.content.Context) {
+            instance?.stopSelf()
         }
     }
 
@@ -56,8 +61,12 @@ class NfcForegroundService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        // START_STICKY: 被杀后系统自动重启
-        return START_STICKY
+        if (intent?.action == ACTION_STOP) {
+            stopSelf()
+            return START_NOT_STICKY
+        }
+        // START_NOT_STICKY: 被杀后不自动重启，避免通知无法关闭
+        return START_NOT_STICKY
     }
 
     override fun onBind(intent: Intent?): IBinder? = binder
@@ -85,7 +94,7 @@ class NfcForegroundService : Service() {
     }
 
     private fun createNotification(text: String): Notification {
-        val pendingIntent = PendingIntent.getActivity(
+        val contentIntent = PendingIntent.getActivity(
             this, 0,
             Intent(this, MainActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
@@ -93,11 +102,26 @@ class NfcForegroundService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        // 退出按钮
+        val stopIntent = PendingIntent.getService(
+            this, 0,
+            Intent(this, NfcForegroundService::class.java).apply {
+                action = ACTION_STOP
+            },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val stopAction = NotificationCompat.Action.Builder(
+            android.R.drawable.ic_menu_close_clear_cancel,
+            getString(R.string.notification_action_stop),
+            stopIntent
+        ).build()
+
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(getString(R.string.foreground_notification_title))
             .setContentText(text)
             .setSmallIcon(android.R.drawable.ic_menu_view)
-            .setContentIntent(pendingIntent)
+            .setContentIntent(contentIntent)
+            .addAction(stopAction)
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .build()

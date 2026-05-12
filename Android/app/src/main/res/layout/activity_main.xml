@@ -264,7 +264,7 @@
                         android:id="@+id/versionText"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="v1.2.0"
+                        android:text="v1.3.0"
                         android:textColor="@color/text_tertiary"
                         android:textSize="12sp" />
 
