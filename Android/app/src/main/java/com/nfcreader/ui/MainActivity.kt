@@ -588,6 +588,6 @@ class MainActivity : AppCompatActivity(), NfcAdapter.ReaderCallback {
         } catch (_: Exception) {}
         unregisterNfcStateReceiver()
         // 停止前台服务，移除常驻通知
-        stopService(Intent(this, NfcForegroundService::class.java))
+        NfcForegroundService.stopCompletely()
     }
 }

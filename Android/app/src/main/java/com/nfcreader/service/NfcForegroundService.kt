@@ -27,14 +27,26 @@ class NfcForegroundService : Service() {
         private const val WAKE_LOCK_TAG = "NFCReader::WakeLock"
 
         // 供外部（如 NfcBackgroundActivity）更新通知
-        private var instance: NfcForegroundService? = null
+        internal var instance: NfcForegroundService? = null
 
         fun updateNotificationStatic(context: android.content.Context, text: String) {
             instance?.updateNotification(text)
         }
 
-        fun stopService(context: android.content.Context) {
-            context.stopService(Intent(context, NfcForegroundService::class.java))
+        /**
+         * 完全停止前台服务：先退出前台状态，再停止自身
+         * 必须先 stopForeground()，否则 stopService()/stopSelf() 对前台服务无效
+         */
+        fun stopCompletely() {
+            instance?.let { service ->
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                    service.stopForeground(STOP_FOREGROUND_REMOVE)
+                } else {
+                    @Suppress("DEPRECATION")
+                    service.stopForeground(true)
+                }
+                service.stopSelf()
+            }
         }
     }
 
@@ -124,17 +136,18 @@ class NfcForegroundService : Service() {
     }
 
     override fun onDestroy() {
-        super.onDestroy()
-        instance = null
-        // 释放唤醒锁
-        if (wakeLock?.isHeld == true) {
-            wakeLock?.release()
-        }
+        // 先退出前台状态、释放唤醒锁，再调 super.onDestroy()
+        // 顺序很重要：stopForeground 必须在 super.onDestroy() 之前
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             stopForeground(STOP_FOREGROUND_REMOVE)
         } else {
             @Suppress("DEPRECATION")
             stopForeground(true)
         }
+        instance = null
+        if (wakeLock?.isHeld == true) {
+            wakeLock?.release()
+        }
+        super.onDestroy()
     }
 }
