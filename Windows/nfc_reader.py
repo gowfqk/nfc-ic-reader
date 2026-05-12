@@ -5,7 +5,7 @@ NFC 读卡器 Windows 端
 模拟 HID 键盘输入，将 UID 直接输入到当前光标位置
 
 作者: NFC Reader Team
-版本: 1.2.0
+版本: 1.3.1
 """
 
 import sys
@@ -49,7 +49,7 @@ def resource_path(relative_path):
 DEFAULT_WIFI_PORT = 8888
 DEFAULT_ADB_LOCAL_PORT = 8888
 DEFAULT_OUTPUT_FILE = "nfc_output.txt"
-APP_VERSION = "1.3.0"
+APP_VERSION = "1.3.1"
 
 
 class AdbHelper:
