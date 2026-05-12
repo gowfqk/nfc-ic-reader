@@ -12,6 +12,7 @@ import android.os.IBinder
 import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import com.nfcreader.R
+import com.nfcreader.receiver.StopServiceReceiver
 import com.nfcreader.ui.MainActivity
 
 /**
@@ -24,7 +25,6 @@ class NfcForegroundService : Service() {
         private const val NOTIFICATION_ID = 1001
         private const val CHANNEL_ID = "nfc_foreground_channel"
         private const val WAKE_LOCK_TAG = "NFCReader::WakeLock"
-        private const val ACTION_STOP = "com.nfcreader.ACTION_STOP_SERVICE"
 
         // 供外部（如 NfcBackgroundActivity）更新通知
         private var instance: NfcForegroundService? = null
@@ -34,7 +34,7 @@ class NfcForegroundService : Service() {
         }
 
         fun stopService(context: android.content.Context) {
-            instance?.stopSelf()
+            context.stopService(Intent(context, NfcForegroundService::class.java))
         }
     }
 
@@ -61,10 +61,6 @@ class NfcForegroundService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == ACTION_STOP) {
-            stopSelf()
-            return START_NOT_STICKY
-        }
         // START_NOT_STICKY: 被杀后不自动重启，避免通知无法关闭
         return START_NOT_STICKY
     }
@@ -102,11 +98,11 @@ class NfcForegroundService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        // 退出按钮
-        val stopIntent = PendingIntent.getService(
+        // 退出按钮（使用 BroadcastReceiver，更可靠）
+        val stopIntent = PendingIntent.getBroadcast(
             this, 0,
-            Intent(this, NfcForegroundService::class.java).apply {
-                action = ACTION_STOP
+            Intent(this, StopServiceReceiver::class.java).apply {
+                action = StopServiceReceiver.ACTION_STOP
             },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )

@@ -85,6 +85,11 @@
             android:exported="false"
             android:foregroundServiceType="connectedDevice" />
 
+        <!-- 通知栏退出按钮广播接收器 -->
+        <receiver
+            android:name=".receiver.StopServiceReceiver"
+            android:exported="false" />
+
         <!-- NFC 卡模拟服务 -->
         <service
             android:name=".service.NfcCardEmulationService"
